@@ -20,6 +20,8 @@ Zwei Befunde verschieben die Prioritäten gegenüber der ursprünglichen Einsch�
 1. **Der `-race`-Lauf ist heute kaputt** – nicht durch Ekanite-Code, sondern durch `etcd-io/bbolt@v1.3.3` (`checkptr`-Fehler). Die CI-Zeile `go test -race` würde auf jedem modernen Toolchain scheitern. Nach der bleve-v2-Migration läuft `-race` grün. **[M]**
 2. **Der Ingest ist index-, nicht parser-limitiert.** Unter bleve v2 sind ~74 % der CPU in `bbolt`-Inserts während `scorch` einen Snapshot persistiert; das Framing (Delimiter + Leseschleife) liegt bei ~7 %. Die in Issue #80 versprochene 10×-Verbesserung durch einen besseren Delimiter ist mit dem aktuellen Stack **nicht** der Hebel. **[M]**
 
+Dritter Befund: Die RFC-5424-Unterstützung ist eine **Teilmenge** – Structured Data wird nicht geparst (landet in der Message), Facility/Severity werden nicht getrennt, die Feldgrammatik weist RFC-konforme Sender ab, und Octet-Counting existiert nur als toter Code. Details und Messtabellen in §10. **[M]**
+
 Der billigste sinnvolle Schritt ist daher: Fork aufräumen (CI/Release/Doku), bleve v2 einziehen (4 Imports), Batch-Default korrigieren, dann die Persistenz- und Suchpfade angehen. Feature-Ausbau (Tail, Zeitbereiche, API) ist Produktarbeit und nur bei konkretem Eigenbedarf sinnvoll.
 
 ---
@@ -442,3 +444,160 @@ du -sh /tmp/ekdata   # nach ~45 s Leerlauf (Merge-Settling)
 ```
 
 **Messumgebung für alle Zahlen:** siehe §1. Rohdaten (Profile, Benchmarks) lagen unter `/tmp` und sind nach Abschluss aufgeräumt; die Befehle oben erzeugen sie neu.
+
+---
+
+## 10. RFC-Konformität (Syslog)
+
+**Stand:** 2026-11-01 · **Methode:** Parser- und Framing-Proben gegen den unveränderten Code (Probe-Modul mit `replace` auf dieses Repo, siehe 10.8), plus Codeprüfung aller Transportpfade. Alle Zeilen in 10.3/10.4 sind **[M]**.
+
+### 10.1 Was verdrahtet ist, was nur herumliegt
+
+| Baustein | Datei | Status |
+|---|---|---|
+| RFC5424-Header (Regex) | `parser/rfc5424.go` | **aktiv** (Default `-input syslog`) |
+| Watchguard M200 (proprietär, kein RFC) | `parser/watchguard.go` | aktiv via `-input M200` |
+| Syslog-Delimiter `\n<PRInnn>` | `input/delimiter_syslog.go` | **aktiv** |
+| Octet-Counting (RFC 6587 §3.4.1) | `input/delimiter_netstrings.go` | **toter Code** – `NewNetstrDelimiter` wird von keinem Paket aufgerufen, kein Flag wählt es |
+| „RFC5424-Reader" (State Machine) | `rfc5424/reader.go`, `rfc5424/delimiter.go` | **toter Code** – von keinem Paket importiert; `Reader.ReadLine()` gibt `"", nil` zurück, also ein **Stub** (Beginn von Issue #16, nie fertig) |
+| TLS-Transport | `cmd/ekanited/main.go` (`newTLSConfig`) | aktiv über `-tlspem`/`-tlskey` |
+| UDP-Transport | `input/collector.go` (`UDPCollector.Start`) | aktiv über `-udp` |
+
+Konsequenz für die Bewertung: Von „drei RFC-Bausteinen im Repo" sind **zwei nicht angeschlossen**; die tatsächlich laufende Implementierung ist der Regex-Parser plus der LF-Delimiter.
+
+### 10.2 Standard-Matrix
+
+| RFC | Thema | Stand |
+|---|---|---|
+| **5424** | Syslog-Protokoll | **Teilmenge**: PRI, VERSION, TIMESTAMP, HOSTNAME, APP-NAME, PROCID, MSGID, MSG. **Kein** STRUCTURED-DATA, keine Facility/Severity-Trennung, keine Längen-/Zeichensatzvalidierung |
+| **5425** | TLS-Transport | **teilweise**: mTLS mit `RequireAndVerifyClientCert`, aber Key muss **PKCS#1-RSA** sein (`x509.ParsePKCS1PrivateKey`), genau **ein** Zertifikat (keine Chain), keine ECDSA-/Ed25519-Keys, kein Zertifikats-Reload; Flags heißen irreführend `-tlspem`/`-tlskey` („CA …") |
+| **5426** | UDP-Transport | **teilweise**: Datagramm-Puffer **256 Byte** (`msgBufSize`), alles darüber wird still abgeschnitten; kein Truncation-Zähler. RFC 5426 empfiehlt ≥480, besser 2048 Oktett |
+| **6587** | Framing | **nur non-transparent (LF)**. Octet-Counting existiert als toter Code; der LF-Delimiter erkennt Nachrichten ausschließlich an `<PRInnn>`, alles davor wird verworfen |
+| **3164** | BSD-Syslog (Legacy) | **nicht implementiert** – die rsyslog-/syslog-ng-Standardweiterleitung wird abgelehnt, nur mit dem README-Template |
+| **5427** | SD-ID-Konventionen | gegenstandslos, weil SD nie geparst wird |
+| **5848** | signierte Nachrichten | nicht implementiert |
+| **6012** | DTLS-Transport | nicht implementiert |
+| **3195** | Reliable Syslog (BEEP) | nicht implementiert (obsolet) |
+
+### 10.3 Gemessene Parser-Konformität
+
+`parser.RFC5424` gegen 20 Zeilen. „OK" = Map gefüllt, also ein indexierbares Event; „ABGELEHNT" = `Parse` liefert `false`, das Event wird **verworfen** (kein Fallback auf die Rohzeile).
+
+| Eingabe (gekürzt) | Ergebnis | Bewertung |
+|---|---|---|
+| `<134>1 TS host1 app1 123 - - login ok` | OK, `message = "- login ok"` | SD-NILVALUE landet in der Message |
+| `… ID47 [exampleSDID@32473 iut="3" eventSource="App"] BOMAn …` | OK, `msgid="ID47"`, `message="[exampleSDID@32473 iut=\"3\" …] BOMAn …"` | **SD wird nicht geparst**, sondern in die Message geschoben |
+| `… ID47 [exampleSDID@32473]` (SD ohne MSG) | OK, Message = SD | dito |
+| `… ID47 -` (SD=NILVALUE, kein MSG) | OK, `message="-"` | dito |
+| `<134>10 …` (VERSION 2-stellig) | **ABGELEHNT** | RFC 5424 erlaubt 1–3 Ziffern |
+| `… web-01 …` (PROCID alphanumerisch) | **ABGELEHNT** | RFC erlaubt 1–128 PRINTUSASCII; real verbreitet (systemd, k8s) |
+| `… 123456 …` (PROCID 6-stellig) | **ABGELEHNT** | willkürliches 5-Ziffern-Limit |
+| `… ID.47 …` (MSGID mit Punkt) | **ABGELEHNT** | RFC erlaubt PRINTUSASCII inkl. Punkt |
+| `<191>1 …` (PRI-Maximum) | OK, `priority=191` | korrekt |
+| `<999>1 …` | **OK**, `priority=999` | keine Bereichsprüfung (RFC: ≤ 191) |
+| `… - host1 …` (TIMESTAMP NILVALUE) | OK | korrekt → Fallback auf Empfangszeit |
+| `… 2026-10-31T10:00:00.123456+02:00 …` | OK | korrekt (Sekundenbruchteile, Offset) |
+| `… - - - - - hello` (HOSTNAME/APP/PID/MSGID NILVALUE) | OK, `host="-" app="-" pid=0 msgid="-"` | NILVALUE wird nicht normalisiert; `pid=0` kollidiert mit echtem PID 0 |
+| `… - - \xef\xbb\xbfBOM message` | OK, Message beginnt mit `\ufeff` | BOM wird nicht entfernt (RFC 5424 §6.4) |
+| `<134>Oct 31 10:00:00 host1 app1[123]: hello` (RFC 3164) | **ABGELEHNT** | Interop-Lücke: Standard-Weiterleitung wird komplett verworfen |
+| `2026-10-31T10:00:00Z host1 app1 123 - - msg` (ohne PRI) | **ABGELEHNT** | korrekt |
+| leere Zeile | **ABGELEHNT** | korrekt |
+| `… - - line1\nline2` (Zeilenumbruch in MSG) | OK | Multiline funktioniert (Regex `(?s)`) |
+| `… my app …` (APP-NAME mit Leerzeichen) | **ABGELEHNT** | korrekt (Feldtrennung) |
+| `… ID47 [a@1 x="1"][b@2 y="2"] msg` | OK, Message enthält beide SD-Elemente | SD-Elemente ununterscheidbar im Text |
+
+Fazit: Der Parser akzeptiert eine **zu enge** Grammatik in vier Feldern (VERSION, PROCID, MSGID, teils HOSTNAME/APP-NAME) und ist **zu permissiv** bei PRI und Feldlängen – bei gleichzeitig fehlender SD-Behandlung.
+
+### 10.4 Gemessenes Framing
+
+`input.NewSyslogDelimiter`, 7 Streams:
+
+| Stream | Ergebnis |
+|---|---|
+| 2 Zeilen LF-getrennt | 2 Nachrichten ✓ |
+| `87 <134>1 …` (octet-counting) | 1 Nachricht, **Längenpräfix stillschweigend verworfen**; funktioniert nur zufällig, weil `<` resynchronisiert |
+| erste Zeile ohne `<PRI>`, danach gültig | erste Zeile **verworfen**, Rest normal |
+| Stacktrace (`\n\t`-Folgezeilen) | **eine** Nachricht ✓ (der Einwand aus #80 gegen `ReadString('\n')` ist berechtigt) |
+| letzte Nachricht ohne abschließendes LF | über `Vestige()` gerettet ✓ |
+| `<9999>1 …` (4-stellige PRI) | **verworfen im Framing**, `tcpEventsRx` zählt sie nicht einmal |
+
+### 10.5 Die fünf praktischen Lücken
+
+1. **Structured Data wird nicht geparst, sondern in die Message gekippt** – inklusive des `- `-Präfixes bei NILVALUE. Jede Nachricht ist damit um das SD-Feld verunreinigt; SD-Inhalte sind nur als Freitext suchbar.
+2. **Die Feldgrammatik ist enger als RFC 5424.** Abgewiesene Zeilen werden **nicht** als Rohzeile indiziert (`Parse()` false → kein Event) – sie verschwinden restlos. Das ist Issue #5 in seiner schlimmsten Form und der Grund, warum Sender „nichts ankommen" sehen (#98).
+3. **Kein Facility/Severity.** `priority` wird als ein `int` gespeichert; `facility`/`severity` kommen im gesamten Repo nicht vor. Filter wie „nur auth.*, severity ≥ err" sind nicht baubar, obwohl die Information im PRI steckt.
+4. **Feldsuche ist kein Query-, sondern ein Dokumentmodell-Thema.** `Event.Data()` liefert ausschließlich `struct{ Message string }` mit der **Rohzeile**. HOSTNAME, APP-NAME, PROCID, MSGID, PRI und die geparste Message werden nie ins Dokument geschrieben; `SourceIP` wird erfasst, aber nirgends verwendet; die im Mapping deklarierten Felder `ReferenceTime`/`ReceptionTime` existieren im Dokument nicht. Issue #9 ist damit größer als „Query-Syntax verdrahten".
+5. **UDP schneidet bei 256 Byte ab**, ohne Zähler; 4-stellige PRI-Header verschwinden schon beim Framing.
+
+### 10.6 Priorisierte Maßnahmen
+
+| # | Inhalt | Aufwand | Einordnung |
+|---|---|---|---|
+| 1 | SD parsen (`[id param="v"]…`), als eigenes Feld führen, `- ` nicht in die Message, NILVALUE normalisieren | 0,5–1 Tag | P3 |
+| 2 | Felder ins Dokument: `host`, `app`, `pid`, `msgid`, `facility`, `severity`, `source_ip`, `timestamp` als echtes Datumsfeld | 1–2 Tage | P3/P4 |
+| 3 | PRI validieren (0–191), `facility = pri/8`, `severity = pri%8` | 1 h | P3 |
+| 4 | Header als Tokenizer/State-Machine statt Regex-Feldgrenzen, RFC-Längen – das ist Issue #16, dann aber vollständig | 1–2 Tage | P4 |
+| 5 | RFC 6587: `NetstrDelimiter` verdrahten, Framing-Flag (`auto`, `lf`, `octet`), Längenpräfix wirklich auswerten | 1 Tag | P4 |
+| 6 | UDP-Puffer 64 KiB + `udpTruncated`-Zähler | 1 h | P3 |
+| 7 | RFC 3164-Parser (BSD-Header, Jahr aus Empfangszeit) als `-input bsd` | 0,5 Tag | P4 |
+| 8 | TLS: ECDSA/Ed25519, Zertifikatskette, getrenntes `-tlsca` für die Client-CA | 0,5 Tag | P4 |
+
+**Nicht bauen:** RFC 5848 (signierte Nachrichten), RFC 6012 (DTLS), RFC 3195 (BEEP). **Entscheiden:** `rfc5424/` (Stub) und `input/delimiter_netstrings.go` entweder in Schritt 4/5 aufnehmen oder löschen – heute erwecken sie den Eindruck, es gäbe eine State-Machine und Octet-Counting.
+
+### 10.7 Auswirkung auf die Gesamtbewertung
+
+Die Einschätzung aus §8 bleibt gültig, verschiebt sich aber: „RFC-Konformität" ist kein Nice-to-have, sondern **die Erklärung für die häufigsten Supportfälle** (#5, #98, #85, #9). Wer den Dienst mit realen Sendern betreiben will (rsyslog-Default, journald, k8s-Container-Logs), kommt an Schritt 1–4 nicht vorbei. Das gehört in P3, nicht ans Ende der Roadmap.
+
+### 10.8 Repro-Probe
+
+```go
+// /tmp/parseprobe/go.mod
+module parseprobe
+
+go 1.24
+
+require github.com/ekanite/ekanite v0.0.0
+
+replace github.com/ekanite/ekanite => /pfad/zum/repo
+```
+
+```go
+// /tmp/parseprobe/main.go
+package main
+
+import (
+	"fmt"
+
+	"github.com/ekanite/ekanite/parser"
+)
+
+func main() {
+	lines := []string{
+		`<134>1 2026-10-31T10:00:00Z host1 app1 123 - - login ok`,
+		`<134>1 2026-10-31T10:00:00Z host1 app1 123 ID47 [exampleSDID@32473 iut="3"] BOMAn application event`,
+		`<134>10 2026-10-31T10:00:00Z host1 app1 123 ID47 - msg`,
+		`<134>1 2026-10-31T10:00:00Z host1 app1 web-01 ID47 - msg`,
+		`<134>1 2026-10-31T10:00:00Z host1 app1 123 ID.47 - msg`,
+		`<999>1 2026-10-31T10:00:00Z host1 app1 123 - - msg`,
+		`<134>Oct 31 10:00:00 host1 app1[123]: hello`,
+	}
+	for _, line := range lines {
+		p := &parser.RFC5424{}
+		p.Init()
+		var res map[string]interface{}
+		p.Parse([]byte(line), &res)
+		if len(res) == 0 {
+			fmt.Printf("ABGELEHNT  %s\n", line)
+			continue
+		}
+		fmt.Printf("OK priority=%v msgid=%q msg=%q\n  %s\n", res["priority"], res["message_id"], res["message"], line)
+	}
+}
+```
+
+```go
+// Framing: /tmp/parseprobe/delim_test.go – NewSyslogDelimiter(256), byteweise füttern,
+// Push-Ergebnisse sammeln, am Ende Vestige() abholen.
+```
+
+Ergebnisse dieser Proben sind die Tabellen 10.3 und 10.4.
