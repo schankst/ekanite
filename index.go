@@ -15,7 +15,9 @@ import (
 
 	"github.com/blevesearch/bleve"
 	"github.com/blevesearch/bleve/analysis/analyzer/custom"
+	_ "github.com/blevesearch/bleve/analysis/analyzer/keyword"
 	"github.com/blevesearch/bleve/analysis/tokenizer/regexp"
+	_ "github.com/blevesearch/bleve/analysis/tokenizer/single"
 	"github.com/blevesearch/bleve/mapping"
 )
 
@@ -520,6 +522,38 @@ func buildIndexMapping() (*mapping.IndexMappingImpl, error) {
 	articleMapping.AddFieldMappingsAt("Message", simpleJustIndexed)
 	articleMapping.AddFieldMappingsAt("ReferenceTime", timeJustIndexed)
 	articleMapping.AddFieldMappingsAt("ReceptionTime", timeJustIndexed)
+
+	// Issue #34: map the structured fields so they are field-searchable
+	// (`field:value`), indexed but not stored, and (except Message) not part of
+	// the catch-all `_all` — that keeps full-text search on the Message and
+	// makes field queries explicit rather than polluting global matches.
+	textField := bleve.NewTextFieldMapping()
+	textField.Store = false
+	textField.IncludeInAll = false
+	textField.IncludeTermVectors = false
+
+	numField := bleve.NewNumericFieldMapping()
+	numField.Store = false
+	numField.IncludeInAll = false
+
+	// Whole-value fields (IPs, hosts, app, msgid): use the keyword analyzer so
+	// "10.0.0.3" is indexed as a single token and matches exactly, instead of
+	// being split on dots and requiring a phrase query.
+	keywordField := bleve.NewTextFieldMapping()
+	keywordField.Store = false
+	keywordField.IncludeInAll = false
+	keywordField.IncludeTermVectors = false
+	keywordField.Analyzer = "keyword"
+
+	for _, f := range []string{"source_ip", "host", "app", "message_id", "msgid"} {
+		articleMapping.AddFieldMappingsAt(f, keywordField)
+	}
+	for _, f := range []string{"description", "structured_data", "pid"} {
+		articleMapping.AddFieldMappingsAt(f, textField)
+	}
+	for _, f := range []string{"priority", "facility", "severity", "version"} {
+		articleMapping.AddFieldMappingsAt(f, numField)
+	}
 
 	// Tell the index about field mappings.
 	indexMapping.DefaultMapping = articleMapping

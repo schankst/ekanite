@@ -644,3 +644,71 @@ func TestEngine_RetentionAuditAndWipe(t *testing.T) {
 		t.Errorf("audit record missing ts/index fields: %s", line)
 	}
 }
+
+// TestEngine_FieldSearch verifies Issue #34: parsed fields are indexed and
+// field-scoped queries (field:value) return only matching events, while the
+// full-text Message search still works.
+func TestEngine_FieldSearch(t *testing.T) {
+	dataDir := tempPath()
+	defer os.RemoveAll(dataDir)
+	e := NewEngine(dataDir)
+
+	newParsed := func(line, host, app string, sev interface{}, pri interface{}, src string) *Event {
+		return &Event{&input.Event{
+			Text: line,
+			Parsed: map[string]interface{}{
+				"host":       host,
+				"app":        app,
+				"message_id": "ID42",
+				"severity":   sev,
+				"priority":   pri,
+			},
+			ReceptionTime: time.Now().UTC(),
+			Sequence:      1,
+			SourceIP:      src,
+		}}
+	}
+
+	evs := []*Event{
+		newParsed("GET /apache request from web", "web01", "apache", 3, 134, "10.0.0.1"),
+		newParsed("POST /api login failed", "web02", "api", 4, 132, "10.0.0.2"),
+		newParsed("500 apache error on ssl", "web03", "apache", 3, 134, "10.0.0.3"),
+	}
+	if err := e.Index(evs); err != nil {
+		t.Fatalf("failed to index: %s", err.Error())
+	}
+
+	searchAll := func(q string) []string {
+		c, err := e.Search(q)
+		if err != nil {
+			t.Fatalf("search %q failed: %s", q, err)
+		}
+		var out []string
+		for s := range c {
+			out = append(out, s)
+		}
+		return out
+	}
+
+	// field search app:apache -> 2 matches (web01, web03)
+	got := searchAll("app:apache")
+	if len(got) != 2 {
+		t.Fatalf("app:apache -> %d results, want 2: %v", len(got), got)
+	}
+	// field search host:web02 -> 1
+	if got := searchAll("host:web02"); len(got) != 1 {
+		t.Fatalf("host:web02 -> %d results, want 1", len(got))
+	}
+	// field search source_ip:10.0.0.3 -> 1
+	if got := searchAll("source_ip:10.0.0.3"); len(got) != 1 {
+		t.Fatalf("source_ip:10.0.0.3 -> %d results, want 1", len(got))
+	}
+	// numeric field severity:3 -> 2 (apache events have severity 3)
+	if got := searchAll("severity:3"); len(got) != 2 {
+		t.Fatalf("severity:3 -> %d results, want 2", len(got))
+	}
+	// full-text still works on the raw Message
+	if got := searchAll("login failed"); len(got) != 1 {
+		t.Fatalf("full-text 'login failed' -> %d results, want 1", len(got))
+	}
+}
