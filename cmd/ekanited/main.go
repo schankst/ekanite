@@ -149,6 +149,9 @@ func main() {
 		framing         = fs.String("framing", envOrString("framing", "auto"), "TCP message framing: auto (default), lf, or octet (RFC 6587)")
 		wipe            = fs.Bool("wipe", false, "Overwrite index files with zeroes before retention deletion (disk-write cost)")
 		auditLog        = fs.String("auditlog", envOrString("auditlog", ""), "Path for retention deletion audit log (JSONL). If empty, no audit is written")
+		rawMode         = fs.String("raw", envOrString("raw", "keep"), "Raw line storage: keep (default) or drop (only parsed fields, no raw line)")
+		anonymize       = fs.String("anonymize", envOrString("anonymize", ""), "Field anonymization: comma-separated FIELD=ALGO, ALGO in {inet,hmac}; e.g. source_ip=inet,host=hmac. Activates data minimization (raw line not stored)")
+		anonKey         = fs.String("anonkey", envOrString("anonkey", ""), "HMAC key for anonymize=hmac (from env EKANITE_ANONKEY; never logged)")
 		showVersion     = fs.Bool("version", false, "Print version information and exit")
 	)
 	fs.Usage = printHelp
@@ -162,6 +165,33 @@ func main() {
 	if *showVersion {
 		fmt.Println(versionString())
 		os.Exit(0)
+	}
+
+	// Data minimization & anonymization policy (DSGVO #93/#95). Parse
+	// -anonymize FIELD=ALGO,... into the transform config before the engine
+	// starts indexing.
+	anon := map[string]string{}
+	if *anonymize != "" {
+		for _, part := range strings.Split(*anonymize, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) != 2 {
+				log.Fatalf("invalid -anonymize entry %q (want FIELD=ALGO)", part)
+			}
+			algo := strings.ToLower(strings.TrimSpace(kv[1]))
+			if algo != "inet" && algo != "hmac" {
+				log.Fatalf("invalid -anonymize algorithm %q (want inet or hmac)", kv[1])
+			}
+			anon[strings.TrimSpace(kv[0])] = algo
+		}
+	}
+	ekanite.SetTransform(ekanite.TransformConfig{
+		RawMode:   *rawMode,
+		Anonymize: anon,
+		AnonKey:   []byte(*anonKey),
+	})
+	if *rawMode == "drop" || len(anon) > 0 {
+		log.Printf("data minimization active: raw=%s, anonymize=%d field(s) (raw line not stored)",
+			*rawMode, len(anon))
 	}
 
 	absDataDir, err := filepath.Abs(*datadir)
@@ -452,6 +482,9 @@ Data/Engine:
   -retentioncheck string  How often expired indexes are swept (e.g. 1h) (default "1h")
   -wipe                 Overwrite index files with zeroes before retention deletion (disk-write cost)
   -auditlog string      Path for retention deletion audit log (JSONL). If empty, no audit is written
+  -raw string           Raw line storage: keep (default) or drop (only parsed fields, no raw line)
+  -anonymize string     Field anonymization: FIELD=ALGO,... ALGO in {inet,hmac} (activates data minimization)
+  -anonkey string       HMAC key for anonymize=hmac (from env EKANITE_ANONKEY; never logged)
   -batchsize int        Indexing batch size (default 300)
   -batchtime int        Indexing batch timeout, in milliseconds (default 1000)
   -maxpending int       Maximum pending index events (default 1000)

@@ -48,5 +48,6 @@ Stand: 2026-11-07. Dieses Dokument beschreibt, wie der Ekanite-Server (Fork `sch
 
 ## 9. Aufbewahrungs-/Compliance-Hinweis
 
-- Anonymisierung (IP/UUID) geplant in **#93 (DSGVO-1)**; Datensparsamkeit (Feld-Storage statt vollständiger Rohzeile, wo möglich) geplant in **#95 (DSGVO-3)**.
+- **Anonymisierung (DSGVO-1, #93)**: `-anonymize FELD=inet|hmac` maskiert IP-Felder (letztes Oktett/Hextett) bzw. hash-t sie per HMAC-SHA256 (`-anonkey`/`EKANITE_ANONKEY`, Key wird nie geloggt). Aktiviert die Datensparsamkeit: die Rohzeile (die Originalwerte enthält) wird dann nicht mehr gespeichert.
+- **Datensparsamkeit (DSGVO-3, #95)**: `-raw drop` indexiert keine Rohzeile — nur die geparsten (ggf. anonymisierten) Felder; Suchtreffer zeigen die serialisierten Felder statt der Originalzeile. Hinweis: `-raw strip` entspricht `-raw keep` (die Rohzeile ist im Feld-Doku-Modell untrennbar vom Volltext; Verzicht auf die Rohzeile erreicht `drop`).
 - Diese Angaben sind bestandsnah zur aktuellen Implementierung und ersetzen keine individuelle Rechtsberatung oder betriebliche Verarbeitungsverzeichnis-Einträge.
