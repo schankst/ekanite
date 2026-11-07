@@ -61,7 +61,7 @@ jobs:
   lint:
     name: Gate G0/G2 — golangci-lint
     needs: baseline
-    continue-on-error: true # aktiv nach GO-1 (#84)
+    continue-on-error: false # blockierend seit GO-1 (#84); Lint ist grün
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

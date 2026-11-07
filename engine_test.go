@@ -3,6 +3,7 @@ package ekanite
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"io/ioutil"
 	"log"
@@ -162,7 +163,7 @@ func TestBatcher_AllModes(t *testing.T) {
 	}
 
 	for n := 0; n < 3; n++ {
-		err = <-c
+		<-c
 	}
 
 	if i.BatchesRx != 3 || i.EventsRx != 8 {
@@ -364,10 +365,10 @@ func TestEngine_IndexThenSearch(t *testing.T) {
 		t.Fatalf("failed to search for indexed event: %s", err.Error())
 	}
 
-	if s, _ := <-c; s != line1 {
+	if s := <-c; s != line1 {
 		t.Fatalf(`returned source incorrect. got: "%s", exp "%s"`, s, line1)
 	}
-	if s, _ := <-c; s != line3 {
+	if s := <-c; s != line3 {
 		t.Fatalf(`returned source incorrect. got: "%s", exp "%s"`, s, line3)
 	}
 
@@ -531,7 +532,9 @@ func testEngineIndexPrime(t *testing.T, e *Engine) {
 
 func newEngine(path string, numShards int, indexDuration time.Duration) *Engine {
 	e := NewEngine(path)
-	e.Open()
+	if err := e.Open(); err != nil {
+		panic(err)
+	}
 	e.NumShards = numShards
 	e.IndexDuration = indexDuration
 	return e
@@ -710,5 +713,47 @@ func TestEngine_FieldSearch(t *testing.T) {
 	// full-text still works on the raw Message
 	if got := searchAll("login failed"); len(got) != 1 {
 		t.Fatalf("full-text 'login failed' -> %d results, want 1", len(got))
+	}
+}
+
+// TestEngine_ErrorWrapping verifies Issue #84: errors from the engine's
+// critical paths are wrapped with %w so errors.Is/As can match sentinel or
+// typed errors instead of string matching.
+func TestEngine_ErrorWrapping(t *testing.T) {
+	// Engine.Open over a path whose parent is a file must fail; the wrapped
+	// *os.PathError must be reachable via errors.As.
+	parent := tempPath()
+	defer os.RemoveAll(parent)
+	if err := os.MkdirAll(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(parent, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	badPath := filepath.Join(blocker, "datadir") // parent is a file
+
+	e := NewEngine(badPath)
+	err := e.Open()
+	if err == nil {
+		t.Fatal("expected Open to fail over a file parent")
+	}
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) {
+		t.Errorf("Open error should wrap *os.PathError, got %T: %v", err, err)
+	}
+}
+
+// TestIndex_FailedShardOpenWrapped: OpenIndex over a missing index dir must
+// return an error wrapping the underlying one.
+func TestIndex_FailedShardOpenWrapped(t *testing.T) {
+	missing := tempPath() + "/does-not-exist"
+	_, err := OpenIndex(missing)
+	if err == nil {
+		t.Fatal("expected OpenIndex to fail")
+	}
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) {
+		t.Errorf("OpenIndex error should wrap *os.PathError, got %T: %v", err, err)
 	}
 }

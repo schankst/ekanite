@@ -110,10 +110,6 @@ func isWhitespace(ch rune) bool {
 	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
 }
 
-func isLetter(ch rune) bool {
-	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
-}
-
 func isParen(ch rune) bool {
 	return ch == '(' || ch == ')'
 }

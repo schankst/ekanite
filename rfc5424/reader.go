@@ -4,7 +4,6 @@ package rfc5424
 import (
 	"io"
 	"regexp"
-	"strconv"
 )
 
 // Reader wraps an io.Reader object and returns valid RFC5424 log messages.
@@ -55,28 +54,4 @@ func (p *Parser) compileMatcher() {
 	id := `([\w-]+)`
 	msg := `(.+$)`
 	p.matcher = regexp.MustCompile(leading + pri + ver + `\s` + ts + `\s` + host + `\s` + app + `\s` + pid + `\s` + id + `\s` + msg)
-}
-
-// parse attempts to parse the given byte slice.
-func (p *Parser) parse(raw []byte, result *map[string]interface{}) {
-	m := p.matcher.FindStringSubmatch(string(raw))
-	if m == nil || len(m) != 9 {
-		return
-	}
-	pri, _ := strconv.Atoi(m[1])
-	ver, _ := strconv.Atoi(m[2])
-	var pid int
-	if m[6] != "-" {
-		pid, _ = strconv.Atoi(m[6])
-	}
-	*result = map[string]interface{}{
-		"priority":   pri,
-		"version":    ver,
-		"timestamp":  m[3],
-		"host":       m[4],
-		"app":        m[5],
-		"pid":        pid,
-		"message_id": m[7],
-		"message":    m[8],
-	}
 }

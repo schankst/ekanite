@@ -27,7 +27,7 @@ func Test_Formats(t *testing.T) {
 			mismatched(p.Fmt, f[1], "")
 		}
 	}
-	p, err := NewParser("unknown-format")
+	_, err := NewParser("unknown-format")
 	if err == nil {
 		t.Fatalf("parser successfully created with invalid format")
 	}

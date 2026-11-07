@@ -31,9 +31,15 @@ func NewSystem(path string) *testSystem {
 	s := NewServer("127.0.0.1:0", e)
 	c := NewCollector("127.0.0.1:0")
 
-	b.Start(nil)
-	c.Start(b.C())
-	s.Start()
+	if err := b.Start(nil); err != nil {
+		panic(err)
+	}
+	if err := c.Start(b.C()); err != nil {
+		panic(err)
+	}
+	if err := s.Start(); err != nil {
+		panic(err)
+	}
 	return &testSystem{e, b, s, c}
 }
 
@@ -331,17 +337,15 @@ func NewEngine(path string) *testEngine {
 
 // waitForCount blocks until the number of indexed documents matches 'count'.
 func (e *testEngine) waitForCount(count uint64) {
-outer:
-	for {
-		select {
-		case <-time.After(10 * time.Millisecond):
-			n, err := e.Total()
-			if err != nil {
-				panic("failed to determine indexed count")
-			}
-			if n == count {
-				break outer
-			}
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for range ticker.C {
+		n, err := e.Total()
+		if err != nil {
+			panic("failed to determine indexed count")
+		}
+		if n == count {
+			return
 		}
 	}
 }

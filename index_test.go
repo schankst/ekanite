@@ -380,8 +380,6 @@ func TestShard_NewOpenClose(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatalf("failed to close shard at %s: %s", path, err.Error())
 	}
-
-	return
 }
 
 func TestShard_Index(t *testing.T) {
@@ -389,7 +387,9 @@ func TestShard_Index(t *testing.T) {
 	defer os.RemoveAll(path)
 
 	s := NewShard(path)
-	s.Open()
+	if err := s.Open(); err != nil {
+		t.Fatal(err)
+	}
 
 	var c uint64
 	var err error

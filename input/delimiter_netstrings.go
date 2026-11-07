@@ -16,7 +16,6 @@ const (
 var (
 	err        error
 	mutex      *sync.Mutex = &sync.Mutex{}
-	errBroken              = errors.New("broken")
 	errLenInc              = errors.New("length-buffer-incomplete")
 	errLenInv              = errors.New("length-buffer-invalid-byte")
 	errLenConv             = errors.New("length-buffer-conversion-error")
