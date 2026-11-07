@@ -90,7 +90,7 @@ func main() {
 		retentionPeriod = fs.String("retention", DefaultRetentionPeriod, "Data retention period. Minimum is 24 hours")
 		cpuProfile      = fs.String("cpuprof", "", "Where to write CPU profiling data. Not written if not set")
 		memProfile      = fs.String("memprof", "", "Where to write memory profiling data. Not written if not set")
-		inputFormat     = fs.String("input", DefaultInputFormat, "Message format of input (supported: syslog)")
+		inputFormat     = fs.String("input", DefaultInputFormat, "Message format of input (supported: syslog, fortios)")
 		showVersion     = fs.Bool("version", false, "Print version information and exit")
 	)
 	fs.Usage = printHelp
@@ -376,7 +376,7 @@ Data/Engine:
 Ingest:
   -tcp string           Syslog server TCP bind address in the form host:port. To disable set to empty string (default "localhost:5514")
   -udp string           Syslog server UDP bind address in the form host:port. If not set, not started
-  -input string         Message format of input (supported: syslog) (default "syslog")
+  -input string         Message format of input (supported: syslog, fortios) (default "syslog")
 
 Query:
   -query string         TCP Bind address for query server in the form host:port. To disable set to empty string (default "localhost:9950")
@@ -399,6 +399,7 @@ General:
 
 Supported input formats:
   syslog                RFC5424-compatible syslog lines
+  fortios               FortiGate FortiOS key-value lines
 
 Build with version info:
   go build -ldflags "-X main.version=1.4.0 -X main.commit=$(git rev-parse --short HEAD)" ./cmd/ekanited

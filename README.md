@@ -33,6 +33,7 @@ Ekanite nimmt Logs über TCP und/oder UDP entgegen (Flags `-tcp`, `-udp`; zum De
 | Wert | Bedeutung |
 |---|---|
 | `syslog` (Standard) | [RFC5424](http://tools.ietf.org/html/rfc5424)-kompatible Syslog-Zeilen (TIMESTAMP in [RFC3339](http://www.ietf.org/rfc/rfc3339.txt)). |
+| `fortios` | FortiGate-FortiOS (Key-Value) |
 
 Für `syslog` muss der Sende-Client Zeilen im folgenden Format liefern:
 
