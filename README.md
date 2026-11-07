@@ -1,6 +1,8 @@
 _For detailed look at the goals, design, and implementation of this project, check out [these blog posts](http://www.philipotoole.com/tag/ekanite/)._
 
 > **⚠️ WORK IN PROGRESS — nicht produktionsreif.** Dieser Fork wird aktiv refactored (siehe `docs/ROADMAP.md`). Kritische Sicherheitslücken sind offen: unauthentifizierte Query-Ports, exponiertes pprof, TCP-DoS-Vektoren und stille Datenverluste (Issues #14, #52, #78, #7, #46, #67). **Nicht für Produktionseinsatz verwenden.**
+
+**Datenschutz:** Siehe [docs/PRIVACY.md](docs/PRIVACY.md).
 # Ekanite [![Go](https://img.shields.io/badge/Go-1.24-blue?logo=go)](https://go.dev/) [![Issues](https://img.shields.io/github/issues/schankst/ekanite)](https://github.com/schankst/ekanite/issues) [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 *Ekanite* is a high-performance syslog server with built-in text search. Its goal is to do a couple of things, and do them well -- accept log messages over the network, and make it easy to search the messages. What it lacks in feature, it makes up for in focus. Built in [Go](http://www.golang.org), it has no external dependencies, which makes deployment easy.
 
