@@ -1,7 +1,7 @@
 # Ekanite – Refactoring-Roadmap
 
 Stand: 2026-11-07 · Gültig für den Fork `schankst/ekanite`.
-Diese Roadmap ordnet alle offenen Issues (Stand 2026-11-07: 83) Milestones zu. Jede Phase hat ein messbares Ziel (Definition of Done). Reihenfolge folgt Abhängigkeiten: nichts ist in einer späteren Phase „doppelt“ anzufassen als in der früheren.
+Diese Roadmap ordnet alle offenen Issues (Stand 2026-11-07: 89) Milestones zu. Jede Phase hat ein messbares Ziel (Definition of Done). Reihenfolge folgt Abhängigkeiten: nichts ist in einer späteren Phase „doppelt“ anzufassen als in der früheren.
 
 ## Sequenz
 
@@ -37,6 +37,21 @@ Feste Reihenfolge innerhalb MS2, da jede Stufe die nächste entlastet:
 4. **SC-4 (#83) – Update-Politik:** `docs/SUPPLY-CHAIN.md` mit Zielversionen, Toleranzregeln und Eskalation; monatlicher `go list -m -u`-Check.
 
 **Abhängigkeiten innerhalb MS2:** #80 → #81 → #82 → #83. Nach außen: SC-1 setzt #19 (CI) voraus und ermöglicht #3 (Race-Gate), #20 (Batch-Default) und #76 (Datadir-Upgrade-Vertrag).
+
+### Go-Modernisierung (GO-1…GO-6)
+
+Die Best-Practices-/Modernisierungs-Issues sind bewusst auf die vorhandenen Milestones verteilt (nicht separiert):
+
+| Issue | Inhalt | Milestone |
+|---|---|---|
+| #84 GO-1 | Idiomatisches-Go-Audit (Lint-Set, `%w`, assert entfernen) | MS6 |
+| #85 GO-2 | Go-Version 1.13 → aktiv gültig (1.24 + toolchain) | MS2 |
+| #86 GO-3 | Moderne Features (`any`, `slices`, `ioutil` raus, `%w`) | MS6 |
+| #87 GO-4 | Einfachheit/Komplexitäts-Reduktion | MS6 |
+| #88 GO-5 | Vollständige Dokumentation (Umbrella) | MS1 |
+| #89 GO-6 | Vollständige Testabdeckung (Umbrella: ≥85 % Kern, Fuzz, Gate) | MS3 |
+
+**Reihenfolge:** #85 (MS2) muss vor #86/#84 (MS6) liegen; #88/#89 sind Umbrella-Issues, die bestehende Doku-/Test-Issues aggregieren und als Abschlusskriterium der jeweiligen Milestone dienen.
 
 ## Reihenfolge-Empfehlung für die Umsetzung
 
