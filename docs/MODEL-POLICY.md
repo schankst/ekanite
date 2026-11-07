@@ -11,12 +11,18 @@
 
 ## Verifizierte Modell-IDs
 
-| Rolle | OpenRouter | Venice |
-|---|---|---|
-| Routine (Tests, fmt, Mechanik) | `deepseek/deepseek-v4.1-flash` · `google/gemini-2.5-flash` | `deepseek-v4-flash` · `qwen-3-8-flash` |
-| Feature-Worker (F1–F9, MS3/MS4) | `openai/gpt-5.6-luna` · `google/gemini-2.5-pro` · `qwen/qwen3-coder` | `deepseek-v4-pro` · `qwen-3-8-max` |
-| Design/Review/Architektur | `openai/gpt-5.6-luna-pro` · `google/gemini-2.5-pro` · `moonshotai/kimi-k2-thinking` | `deepseek-v4-pro` |
-| TaskManager-Assist | `google/gemini-2.5-flash` | `qwen-3-8-flash` |
+| Rolle | OpenRouter-ID | $/1M in · out | Venice-ID | $/1M in · out (Cache) |
+|---|---|---|---|---|
+| Routine (Tests, fmt, Mechanik) | `deepseek/deepseek-v4.1-flash` | 0,05 · 0,57 | `deepseek-v4-flash` | 0,14 · 0,28 |
+| Routine (Alt.) | `google/gemini-2.5-flash` | 0,30 · 2,50 | `qwen-3-8-flash` | 0,14 · 0,49 |
+| Feature-Worker (F1–F9, MS3/MS4) | `openai/gpt-5.6-luna` | 0,20 · 1,20 | `deepseek-v4-pro` | 1,65 · 3,30 |
+| Feature (Alt.) | `google/gemini-2.5-pro` | 1,25 · 10,00 | `qwen-3-8-max` | 2,50 · 7,50 |
+| Feature (Alt.) | `qwen/qwen3-coder` | 0,30 · 1,00 | — | — |
+| Design/Review/Architektur | `openai/gpt-5.6-luna-pro` | 0,20 · 1,20 | `deepseek-v4-pro` | 1,65 · 3,30 |
+| Review (Alt.) | `moonshotai/kimi-k2-thinking` | 0,60 · 2,50 | — | — |
+| TaskManager-Assist | `google/gemini-2.5-flash` | 0,30 · 2,50 | `qwen-3-8-flash` | 0,14 · 0,49 |
+
+Kostenquellen: OpenRouter `/api/v1/models` (pricing, pro Token → ×1M) und Venice `/models` (`model_spec.pricing.usd`, pro 1M); Venice-Cache-Input z. B. `deepseek-v4-flash` 0,028 $/1M. Preise können sich ändern — Stichtag 2026-11-07.
 
 ## Pins je Werkzeug (Soll)
 | Werkzeug | Default | Hinweis |
