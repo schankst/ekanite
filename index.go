@@ -104,6 +104,22 @@ func (i Indexes) Less(u, v int) bool {
 // Swap swaps two elements (sort.Interface).
 func (i Indexes) Swap(u, v int) { i[u], i[v] = i[v], i[u] }
 
+// securePermissions restricts a created index tree to the owner only: every
+// directory is set 0700 and every file 0600. bleve/bbolt create files with
+// default 0644 modes; enforcing owner-only here keeps stored log data from
+// being world-readable regardless of the library's defaults (Issue #90).
+func securePermissions(root string) error {
+	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return os.Chmod(path, 0700)
+		}
+		return os.Chmod(path, 0600)
+	})
+}
+
 // NewIndex returns an Index for the given start and end time, with the requested shards. It
 // returns an error if an index already exists at the path.
 func NewIndex(path string, startTime, endTime time.Time, numShards int) (*Index, error) {
@@ -119,12 +135,12 @@ func NewIndex(path string, startTime, endTime time.Time, numShards int) (*Index,
 	if _, err := os.Stat(indexPath); err == nil && os.IsNotExist(err) {
 		return nil, fmt.Errorf("index already exists at %s", indexPath)
 	}
-	if err := os.MkdirAll(indexPath, 0755); err != nil {
+	if err := os.MkdirAll(indexPath, 0700); err != nil {
 		return nil, err
 	}
 
 	// Insert the file with the duration information.
-	f, err := os.Create(durationPath)
+	f, err := os.OpenFile(durationPath, os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +165,11 @@ func NewIndex(path string, startTime, endTime time.Time, numShards int) (*Index,
 	alias := bleve.NewIndexAlias()
 	for _, s := range shards {
 		alias.Add(s.b)
+	}
+
+	// Restrict the created tree to the owner (Issue #90).
+	if err := securePermissions(indexPath); err != nil {
+		return nil, err
 	}
 
 	// Index is ready to go.
@@ -212,6 +233,11 @@ func OpenIndex(path string) (*Index, error) {
 	alias := bleve.NewIndexAlias()
 	for _, s := range shards {
 		alias.Add(s.b)
+	}
+
+	// Repair permissions on pre-existing trees (Issue #90).
+	if err := securePermissions(path); err != nil {
+		return nil, err
 	}
 
 	// Index is ready to go.
@@ -321,6 +347,28 @@ func (i *Index) Close() error {
 func DeleteIndex(i *Index) error {
 	_ = i.Close()
 	return os.RemoveAll(i.path)
+}
+
+// WipeIndex overwrites every file in the index tree with zeroes before the
+// caller removes it, so bbolt extents and other data are not trivially
+// recoverable from disk after retention deletion (Issue #92). Files are
+// truncated to zero length after being overwritten to release the space.
+func WipeIndex(i *Index) error {
+	return filepath.Walk(i.path, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		// Overwrite with zeroes in one pass; sufficient for sanitization
+		// against casual recovery (HDD/SSD remapping is out of scope here).
+		zeroes := make([]byte, info.Size())
+		if err := os.WriteFile(path, zeroes, 0600); err != nil {
+			return err
+		}
+		return os.Truncate(path, 0)
+	})
 }
 
 // Shard returns the shard from the index, for the given doc ID.

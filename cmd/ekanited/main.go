@@ -147,10 +147,17 @@ func main() {
 		memProfile      = fs.String("memprof", envOrString("memprof", ""), "Where to write memory profiling data. Not written if not set")
 		inputFormat     = fs.String("input", envOrString("input", DefaultInputFormat), "Message format of input (supported: syslog, fortios, bsd)")
 		framing         = fs.String("framing", envOrString("framing", "auto"), "TCP message framing: auto (default), lf, or octet (RFC 6587)")
+		wipe            = fs.Bool("wipe", false, "Overwrite index files with zeroes before retention deletion (disk-write cost)")
+		auditLog        = fs.String("auditlog", envOrString("auditlog", ""), "Path for retention deletion audit log (JSONL). If empty, no audit is written")
 		showVersion     = fs.Bool("version", false, "Print version information and exit")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
+
+	// Restrict file creation to the owner only (Issue #90): datadir, index
+	// shards and audit log must not be world-readable. Combined with explicit
+	// 0700/0600 modes this enforces owner-only access to stored logs.
+	syscall.Umask(0077)
 
 	if *showVersion {
 		fmt.Println(versionString())
@@ -194,6 +201,14 @@ func main() {
 	engine.RetentionPeriod = retention
 	engine.IndexDuration = indexDuration
 	engine.RetentionCheckInterval = retentionCheckIntv
+	engine.WipeEnabled = *wipe
+	if *auditLog != "" {
+		f, err := os.OpenFile(*auditLog, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			log.Fatalf("failed to open audit log '%s': %s", *auditLog, err.Error())
+		}
+		engine.AuditLogger = log.New(f, "", 0)
+	}
 
 	if err := engine.Open(); err != nil {
 		log.Fatalf("failed to open engine: %s", err.Error())
@@ -435,6 +450,8 @@ Data/Engine:
   -datadir string       Set data directory (default "/var/opt/ekanite")
   -indexdur string      Index time slice (e.g. 24h or 7d). Larger slices mean fewer, larger indexes (default "24h")
   -retentioncheck string  How often expired indexes are swept (e.g. 1h) (default "1h")
+  -wipe                 Overwrite index files with zeroes before retention deletion (disk-write cost)
+  -auditlog string      Path for retention deletion audit log (JSONL). If empty, no audit is written
   -batchsize int        Indexing batch size (default 300)
   -batchtime int        Indexing batch timeout, in milliseconds (default 1000)
   -maxpending int       Maximum pending index events (default 1000)
