@@ -22,8 +22,34 @@ func init() {
 
 const (
 	newlineTimeout = time.Duration(1000 * time.Millisecond)
-	msgBufSize     = 256
+	// msgBufSize is the UDP read buffer. RFC 5426 mandates supporting at least
+	// 2048 octets; 4096 covers typical datagrams without silently truncating
+	// larger legitimate payloads. Datagrams that still exceed it are counted in
+	// udpTruncated rather than silently dropped.
+	msgBufSize = 4096
+	// udpReadBufSize is one byte larger than msgBufSize so a datagram that
+	// exceeds the accepted size reads back udpReadBufSize (== msgBufSize+1)
+	// bytes, making truncation detectable (ReadFromUDP clips to the buffer).
+	udpReadBufSize = msgBufSize + 1
 )
+
+// newEvent builds an Event from a parsed log line. If the parser failed to
+// parse the line (Parse returned false), the raw line is still indexed as a
+// fallback event so no message is silently lost (Issue #16). Such events carry
+// Parsed = {"raw": <line>, "unparsed": true} and a nil timestamp, so
+// ReferenceTime falls back to ReceptionTime.
+func newEvent(text string, parsed map[string]interface{}, source string) *Event {
+	if parsed == nil {
+		parsed = map[string]interface{}{"raw": text, "unparsed": true}
+	}
+	return &Event{
+		Text:          text,
+		Parsed:        parsed,
+		ReceptionTime: time.Now().UTC(),
+		Sequence:      atomic.AddInt64(&sequenceNumber, 1),
+		SourceIP:      source,
+	}
+}
 
 // Collector specifies the interface all network collectors must implement.
 type Collector interface {
@@ -145,15 +171,11 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 		// Log line available?
 		if match {
 			stats.Add("tcpEventsRx", 1)
+			var parsed map[string]interface{}
 			if parser.Parse(bytes.NewBufferString(log).Bytes()) {
-				c <- &Event{
-					Text:          string(parser.Raw),
-					Parsed:        parser.Result,
-					ReceptionTime: time.Now().UTC(),
-					Sequence:      atomic.AddInt64(&sequenceNumber, 1),
-					SourceIP:      conn.RemoteAddr().String(),
-				}
+				parsed = parser.Result
 			}
+			c <- newEvent(string(parser.Raw), parsed, conn.RemoteAddr().String())
 		}
 
 		// Was the connection closed?
@@ -176,23 +198,25 @@ func (s *UDPCollector) Start(c chan<- *Event) error {
 	}
 
 	go func() {
-		buf := make([]byte, msgBufSize)
+		buf := make([]byte, udpReadBufSize)
 		for {
 			n, addr, err := conn.ReadFromUDP(buf)
 			stats.Add("udpBytesRead", int64(n))
 			if err != nil {
 				continue
 			}
-			log := strings.Trim(string(buf[:n]), "\r\n")
-			if parser.Parse(bytes.NewBufferString(log).Bytes()) {
-				c <- &Event{
-					Text:          log,
-					Parsed:        parser.Result,
-					ReceptionTime: time.Now().UTC(),
-					Sequence:      atomic.AddInt64(&sequenceNumber, 1),
-					SourceIP:      addr.String(),
-				}
+			if n > msgBufSize {
+				// Datagram exceeded the accepted size: the remainder was dropped.
+				// Count it so silent loss is observable (Issue #18).
+				stats.Add("udpTruncated", 1)
+				continue
 			}
+			log := strings.Trim(string(buf[:n]), "\r\n")
+			var parsed map[string]interface{}
+			if parser.Parse(bytes.NewBufferString(log).Bytes()) {
+				parsed = parser.Result
+			}
+			c <- newEvent(log, parsed, addr.String())
 			stats.Add("udpEventsRx", 1)
 		}
 	}()
