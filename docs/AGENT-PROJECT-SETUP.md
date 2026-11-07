@@ -51,32 +51,34 @@ Begründung `continue-on-error`: Der Ist-Zustand ist rot (Race-Gate #3, vuln). D
 
 | Werkzeug | Stärke | Schwäche für dieses Setup | Einsatz |
 |---|---|---|---|
-| **Claude Code** (Anthropic) | Terminal-basiert, gut in großen Codebasen, Subagenten-Modell | Lizenzkosten; projektspezifische Konventionen müssen in `AGENTS.md` stehen | **Empfohlen als Haupt-Worker** (Ingest/Engine/Server/Ops) |
-| **OpenAI Codex CLI** | Integriert mit GitHub/Issues, Sandbox, Skript-Execution | jünger; Steuerung über Custom-Agents noch im Fluss | gute Alternative für Worker; ideal für TaskManager-Skripte |
-| **GitHub Copilot coding agent** | Native GitHub-Integration, PR-Erstellung | weniger flexibel bei Cross-Repo-/Multi-Agent-Orchestrierung | für kleine Tasks + Docs/Testing |
-| **Devin** (Cognition) | autonome End-to-End-Tasks | für einen privaten Fork überdimensioniert; Kosten | nicht empfohlen |
-| **OpenHands** (open source) | selbst gehostet, frei, Workspace-Steuerung | Setup-Pflege; Qualität kontextabhängig | Option für Selbsthosting |
-| **AutoGen / CrewAI / LangGraph** | echte Multi-Agent-Frameworks | zusätzliche Infrastruktur; für 8 Rollen + deterministisches Wellenmodell unnötig | nicht empfohlen |
+| **OpenCode** | OSS, CLI-first, provider-flexibel (OpenRouter/Venice), gute Modell-Pinning-Optionen | Konfiguration pro Provider nötig | **Primär-Worker** (nach Modell-Festlegung) |
+| **pi (pi-coding-agent)** | leichtgewichtig, Coding-Fokus | jung; Modellauswahl pro Task festlegen | Pilot für 1 Lane |
+| **Cline** | IDE-Integration (VS Code) | kein Headless; Modellwahl in UI | nur bei IDE-Arbeit |
+| **omp** | aktuelle Umgebung/Assistent | nicht als Worker-Executor gedacht | TaskManager/Supervisor-Assist |
+| **Claude Code** | (auf Wunsch entfernt) | — | nicht mehr in Auswahl |
+| **hermes** | nicht installiert | — | entfällt |
 
 ### 4.2 Empfohlene Konfiguration
-- **Supervisor:** Mensch + LLM-Assistenz (z. B. Claude Code im „Read-only/Plan“-Modus) — entscheidet, schreibt keinen Produktionscode.
+- **Supervisor:** Mensch + LLM-Assistenz (z. B. omp/OpenCode im „Read-only/Plan“-Modus) — entscheidet, schreibt keinen Produktionscode.
 - **TaskManager:** deterministisches Skript (Bash + `gh` CLI) statt LLM — Planung ist Datenfluss, keine Kreativität. Optional: Codex-CLI-Agent, der nur `gh`-Aufrufe ausführt.
-- **Worker (8 Rollen):** 1–2 instanziierte Claude-Code-Agenten **pro Lane**, gestartet mit Kontext (Eigentumsliste + DoD aus `docs/AGENTS.md`); Test-first per `GOFLAGS` und CI-Gates.
-- **TestingAgent/DocsAgent:** können derselbe Claude-Code-Agent im jeweiligen Eigentumsbereich sein (eigene Session).
+- **Worker (8 Rollen):** 1–2 instanziierte **OpenCode**-Agenten **pro Lane**, gestartet mit Kontext (Eigentumsliste + DoD aus `docs/AGENTS.md`); Modell-Pins je Rolle (siehe 4.3); Test-first per `GOFLAGS` und CI-Gates.
+- **TestingAgent/DocsAgent:** können derselbe OpenCode-Agent im jeweiligen Eigentumsbereich sein (eigene Session).
 
 ### 4.3 Verifizierter lokaler Werkzeug-Stand (2026-11-07)
 | Werkzeug | Lokal gefunden | Verdict |
 |---|---|---|
-| `claude` (Claude Code, /usr/bin/claude) | ✅ | **Primär-Worker** — ausgereift, Subagenten, gut für Go-Multi-Datei-Aufgaben |
-| `opencode` (~/.opencode/bin) | ✅ | OSS-Alternative für Worker; Fallback, wenn Modellkosten/Wahlfreiheit zählen |
+| `opencode` (~/.opencode/bin) | ✅ | **Primär-Worker** — CLI-first, Provider OpenRouter/Venice, Modelle per Konfiguration pinbar |
+| `pi` (@earendil-works/pi-coding-agent v1.5.0) | ✅ | Pilot/Kandidat für einzelne Lanes |
 | `cline` (v3.0.74) | ✅ | nur bei IDE-Arbeit (VS Code); kein Headless-Betrieb |
-| `pi` (@earendil-works/pi-coding-agent v1.5.0) | ✅ | Pilot/Kandidat für einzelne Lanes; noch nicht Battle-tested |
 | `omp` (lokale Umgebung) | ✅ | Assistenz für Supervisor/TaskManager (Orchestrierung/Doku), kein Worker-Executor |
+| `claude` | ✅ installiert, **bewusst aus der Auswahl genommen** | — |
 | `hermes` | ❌ (kein Binary) | aus der Auswahl entfernen |
 
-**Finale Empfehlung:** Worker = **Claude Code** (primär) / OpenCode (Fallback); TaskManager+Supervisor-Assist = **omp** + deterministische `gh`-Skripte; `cline` nur in IDE; `pi` als Pilot für 1 Lane evaluieren; `hermes` entfällt.
+**Finale Empfehlung (Werkzeuge):** Worker = **OpenCode** (primär) mit pro-Rolle gepinnten Modellen (siehe Modell-Entscheidung); `pi` als Pilot für 1 Lane; `cline` nur in IDE; TaskManager+Supervisor-Assist = **omp** + deterministische `gh`-Skripte; `claude`/`hermes` entfallen.
 
-**Warum diese Wahl:** Das Wellenmodell ist deterministisch (Graph + Gates) — der Bedarf ist starke, fokussierte Implementierungs-Agenten (nicht autonome Multi-Agent-Frameworks). Der größte Hebel ist einheitlicher Kontext (`AGENTS.md`), externe Gate-Erzwingung (CI) und ein menschlicher Supervisor. Claude Code + Codex CLI decken das mit minimaler Infrastruktur ab.
+**Modell-Entscheidung** (Provider: OpenRouter, Venice) wird in `docs/MODEL-POLICY.md` geführt (geplant); Pins erst nach Verifikation der verfügbaren Modell-IDs gegen die Provider-API (Keys müssen in der Umgebung liegen).
+
+**Warum diese Wahl:** Das Wellenmodell ist deterministisch (Graph + Gates) — der Bedarf ist starke, fokussierte Implementierungs-Agenten (nicht autonome Multi-Agent-Frameworks). Der größte Hebel ist einheitlicher Kontext (`AGENTS.md`), externe Gate-Erzwingung (CI) und ein menschlicher Supervisor. OpenCode + omp decken das mit minimaler Infrastruktur ab.
 
 ## 5. PR-Template (`.github/pull_request_template.md`)
 
