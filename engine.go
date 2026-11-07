@@ -153,7 +153,7 @@ func (e *Engine) Open() error {
 	}
 	d, err := os.Open(e.path)
 	if err != nil {
-		return fmt.Errorf("failed to open engine: %s", err.Error())
+		return fmt.Errorf("failed to open engine: %w", err)
 	}
 
 	fis, err := d.Readdir(0)
@@ -169,7 +169,7 @@ func (e *Engine) Open() error {
 		indexPath := filepath.Join(e.path, fi.Name())
 		i, err := OpenIndex(indexPath)
 		if err != nil {
-			return fmt.Errorf("engine failed to open at index %s: %s", indexPath, err.Error())
+			return fmt.Errorf("engine failed to open at index %s: %w", indexPath, err)
 		}
 		log.Printf("engine opened index with %d shard(s) at %s", len(i.Shards), indexPath)
 		e.indexes = append(e.indexes, i)
@@ -265,7 +265,6 @@ func (e *Engine) enforceRetention() {
 		}
 	}
 	e.indexes = filtered
-	return
 }
 
 // indexForReferenceTime returns an index suitable for indexing an event
@@ -294,7 +293,10 @@ func (e *Engine) createIndex(startTime, endTime time.Time) (*Index, error) {
 	}
 	if idx != nil {
 		startTime = idx.endTime // XXX This could still align with another start time! Needs some sort of loop.
-		assert(!startTime.After(endTime), "new start time after end time")
+		if startTime.After(endTime) {
+			return nil, fmt.Errorf("index start time %s after requested end time %s",
+				startTime.UTC().Format(indexNameLayout), endTime.UTC().Format(indexNameLayout))
+		}
 	}
 
 	i, err := NewIndex(e.path, startTime, endTime, e.NumShards)
@@ -356,14 +358,21 @@ func (e *Engine) Index(events []*Event) error {
 	}
 
 	// Index each batch in parallel.
+	errCh := make(chan error, len(subBatches))
 	for index, subBatch := range subBatches {
 		wg.Add(1)
 		go func(i *Index, b []Document) {
 			defer wg.Done()
-			i.Index(b)
+			errCh <- i.Index(b)
 		}(index, subBatch)
 	}
 	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -405,11 +414,4 @@ func (e *Engine) Search(query string) (<-chan string, error) {
 // Path returns the path to the directory of indexed data.
 func (e *Engine) Path() string {
 	return e.path
-}
-
-// assert will panic with a given formatted message if the given condition is false.
-func assert(condition bool, msg string, v ...interface{}) {
-	if !condition {
-		panic(fmt.Sprintf("assert failed: "+msg, v...))
-	}
 }

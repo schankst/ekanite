@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"expvar"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -26,31 +25,9 @@ import (
 )
 
 var (
-	stats = expvar.NewMap("ekanite")
-)
-
-// Build information, overridable via -ldflags.
-var (
 	version = "dev"
 	commit  = "unknown"
 )
-
-// Program parameters
-var datadir string
-var tcpIface string
-var udpIface string
-var caPemPath string
-var caKeyPath string
-var queryIface string
-var batchSize int
-var batchTimeout int
-var indexMaxPending int
-var gomaxprocs int
-var numShards int
-var retentionPeriod string
-var cpuProfile string
-var memProfile string
-var inputFormat string
 
 // Flag set
 var fs *flag.FlagSet
@@ -155,7 +132,7 @@ func main() {
 		showVersion     = fs.Bool("version", false, "Print version information and exit")
 	)
 	fs.Usage = printHelp
-	fs.Parse(os.Args[1:])
+	_ = fs.Parse(os.Args[1:]) // ExitOnError: parse errors terminate via os.Exit already
 
 	// Restrict file creation to the owner only (Issue #90): datadir, index
 	// shards and audit log must not be world-readable. Combined with explicit
@@ -309,10 +286,10 @@ func main() {
 func startTCPCollector(iface, format, framing string, tls *tls.Config, batcher *ekanite.Batcher) error {
 	collector, err := input.NewCollector("tcp", iface, format, framing, tls)
 	if err != nil {
-		return fmt.Errorf(("failed to create TCP collector: %s"), err.Error())
+		return fmt.Errorf("failed to create TCP collector: %w", err)
 	}
 	if err := collector.Start(batcher.C()); err != nil {
-		return fmt.Errorf("failed to start TCP collector: %s", err.Error())
+		return fmt.Errorf("failed to start TCP collector: %w", err)
 	}
 
 	return nil
@@ -321,10 +298,10 @@ func startTCPCollector(iface, format, framing string, tls *tls.Config, batcher *
 func startUDPCollector(iface, format string, batcher *ekanite.Batcher) error {
 	collector, err := input.NewCollector("udp", iface, format, "", nil)
 	if err != nil {
-		return fmt.Errorf("failed to create UDP collector: %s", err.Error())
+		return fmt.Errorf("failed to create UDP collector: %w", err)
 	}
 	if err := collector.Start(batcher.C()); err != nil {
-		return fmt.Errorf("failed to start UDP collector: %s", err.Error())
+		return fmt.Errorf("failed to start UDP collector: %w", err)
 	}
 
 	return nil
@@ -406,12 +383,9 @@ func newTLSConfig(caPemPath, caKeyPath string) (*tls.Config, error) {
 
 // drainLog drains errors from the channel and simply logs them
 func drainLog(msg string, errChan <-chan error) {
-	for {
-		select {
-		case err := <-errChan:
-			if err != nil {
-				log.Printf("%s: %s", msg, err.Error())
-			}
+	for err := range errChan {
+		if err != nil {
+			log.Printf("%s: %s", msg, err.Error())
 		}
 	}
 }
@@ -423,10 +397,8 @@ func waitForSignals() {
 	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
 
 	// Block until one of the signals above is received
-	select {
-	case <-signalCh:
-		log.Println("signal received, shutting down...")
-	}
+	<-signalCh
+	log.Println("signal received, shutting down...")
 }
 
 // prof stores the file locations of active profiles.
@@ -444,7 +416,9 @@ func startProfile(cpuprofile, memprofile string) {
 		}
 		log.Printf("writing CPU profile to: %s\n", cpuprofile)
 		prof.cpu = f
-		pprof.StartCPUProfile(prof.cpu)
+		if err := pprof.StartCPUProfile(prof.cpu); err != nil {
+			log.Fatalf("failed to start CPU profile: %v", err)
+		}
 	}
 
 	if memprofile != "" {
@@ -467,7 +441,9 @@ func stopProfile() {
 		log.Println("CPU profile stopped")
 	}
 	if prof.mem != nil {
-		pprof.Lookup("heap").WriteTo(prof.mem, 0)
+		if err := pprof.Lookup("heap").WriteTo(prof.mem, 0); err != nil {
+			log.Printf("failed to write memory profile: %v", err)
+		}
 		prof.mem.Close()
 		log.Println("memory profile stopped")
 	}

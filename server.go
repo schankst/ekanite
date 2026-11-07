@@ -81,13 +81,22 @@ func (s *Server) handleConnection(conn net.Conn) {
 		s.Logger.Printf("executing query '%s'", query)
 		c, err := s.Searcher.Search(query)
 		if err != nil {
-			conn.Write([]byte(err.Error()))
+			if _, werr := conn.Write([]byte(err.Error())); werr != nil {
+				conn.Close()
+				return
+			}
 		} else {
 			for s := range c {
-				conn.Write([]byte(s + "\n"))
+				if _, werr := conn.Write([]byte(s + "\n")); werr != nil {
+					conn.Close()
+					return
+				}
 			}
 		}
 		// Send two newlines to indicate end-of-results.
-		conn.Write([]byte("\n\n"))
+		if _, werr := conn.Write([]byte("\n\n")); werr != nil {
+			conn.Close()
+			return
+		}
 	}
 }

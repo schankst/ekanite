@@ -152,7 +152,10 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 	var match bool
 
 	for {
-		conn.SetReadDeadline(time.Now().Add(newlineTimeout))
+		if err := conn.SetReadDeadline(time.Now().Add(newlineTimeout)); err != nil {
+			stats.Add("tcpConnUnrecoverError", 1)
+			return
+		}
 		b, err := reader.ReadByte()
 		if err != nil {
 			stats.Add("tcpConnReadError", 1)

@@ -188,7 +188,7 @@ func NewIndex(path string, startTime, endTime time.Time, numShards int) (*Index,
 func OpenIndex(path string) (*Index, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to access index at %s", path)
+		return nil, fmt.Errorf("failed to access index at %s: %w", path, err)
 	}
 	if !fi.IsDir() {
 		return nil, fmt.Errorf("index %s path is not a directory", path)
@@ -197,23 +197,23 @@ func OpenIndex(path string) (*Index, error) {
 	// Get the start time and end time.
 	startTime, err := time.Parse(indexNameLayout, fi.Name())
 	if err != nil {
-		return nil, fmt.Errorf("unable to determine start time of index: %s", err.Error())
+		return nil, fmt.Errorf("unable to determine start time of index: %w", err)
 	}
 
 	var endTime time.Time
 	f, err := os.Open(filepath.Join(path, endTimeFileName))
 	if err != nil {
-		return nil, fmt.Errorf("unable to open end time file for index: %s", err.Error())
+		return nil, fmt.Errorf("unable to open end time file for index: %w", err)
 	}
 	defer f.Close()
 	r := bufio.NewReader(f)
 	s, err := r.ReadString('\n')
 	if err != nil && err != io.EOF {
-		return nil, fmt.Errorf("unable to determine end time of index: %s", err.Error())
+		return nil, fmt.Errorf("unable to determine end time of index: %w", err)
 	}
 	endTime, err = time.Parse(indexNameLayout, s)
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse end time from '%s': %s", s, err.Error())
+		return nil, fmt.Errorf("unable to parse end time from %q: %w", s, err)
 	}
 
 	// Open the shards.
@@ -226,7 +226,7 @@ func OpenIndex(path string) (*Index, error) {
 	for _, name := range names {
 		s := NewShard(filepath.Join(path, name))
 		if err := s.Open(); err != nil {
-			return nil, fmt.Errorf("shard open fail: %s", err.Error())
+			return nil, fmt.Errorf("shard open fail: %w", err)
 		}
 		shards = append(shards, s)
 	}
@@ -296,14 +296,21 @@ func (i *Index) Index(documents []Document) error {
 	}
 
 	// Index each batch in parallel.
+	errCh := make(chan error, len(shardBatches))
 	for shard, batch := range shardBatches {
 		wg.Add(1)
 		go func(s *Shard, b []Document) {
 			defer wg.Done()
-			s.Index(b)
+			errCh <- s.Index(b)
 		}(shard, batch)
 	}
 	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -408,12 +415,12 @@ func (s *Shard) Open() error {
 		}
 		s.b, err = bleve.New(s.path, mapping)
 		if err != nil {
-			return fmt.Errorf("bleve new: %s", err.Error())
+			return fmt.Errorf("bleve new: %w", err)
 		}
 	} else {
 		s.b, err = bleve.Open(s.path)
 		if err != nil {
-			return fmt.Errorf("bleve open: %s", err.Error())
+			return fmt.Errorf("bleve open: %w", err)
 		}
 	}
 	return nil

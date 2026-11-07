@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net"
-	"strings"
 	"sync"
 )
 
@@ -134,14 +133,4 @@ func serializedFields(parsed map[string]interface{}) []byte {
 		return nil
 	}
 	return b
-}
-
-// normalizeRawMode validates the -raw value; unknown values fall back to
-// "keep" so a typo does not silently disable data minimization.
-func normalizeRawMode(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	if s == "drop" {
-		return "drop"
-	}
-	return "keep"
 }

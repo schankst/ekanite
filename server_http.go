@@ -45,7 +45,11 @@ func (s *HTTPServer) Start() error {
 		return err
 	}
 
-	go http.Serve(ln, s)
+	go func() {
+		if err := http.Serve(ln, s); err != nil {
+			s.Logger.Printf("http server error: %v", err)
+		}
+	}()
 	return nil
 }
 
@@ -76,7 +80,10 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(r.FormValue("query")) == 0 {
-			serveIndex(s, w, r)
+			if err := serveIndex(s, w, r); err != nil {
+				s.Logger.Print("Error executing template: ", err)
+				http.Error(w, "Error executing template: "+err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -141,7 +148,6 @@ func dontCache(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Expires", time.Unix(0, 0).Format(time.RFC1123))
 	w.Header().Set("Last-Modified", time.Now().Format(time.RFC1123))
 	w.Header().Set("Cache-Control", "private, no-store, max-age=0, no-cache, must-revalidate, post-check=0, pre-check=0")
-	return
 }
 
 const templateSource string = `
