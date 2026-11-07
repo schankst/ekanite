@@ -375,7 +375,7 @@ type testCollector struct {
 
 // NewCollector returns a new test TCP collector.
 func NewCollector(addr string) *testCollector {
-	collector, err := input.NewCollector("tcp", addr, "syslog", nil)
+	collector, err := input.NewCollector("tcp", addr, "syslog", "lf", nil)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create test collector: %s", err.Error()))
 	}

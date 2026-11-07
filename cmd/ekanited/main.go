@@ -100,6 +100,19 @@ func envOrInt(flagName string, fallback int) int {
 	return n
 }
 
+// parseDurationFlag parses a duration flag, additionally accepting a trailing
+// "d" suffix as days (e.g. "7d") beyond what time.ParseDuration understands.
+func parseDurationFlag(s, name string) (time.Duration, error) {
+	if strings.HasSuffix(s, "d") {
+		days, err := strconv.ParseFloat(strings.TrimSuffix(s, "d"), 64)
+		if err != nil {
+			return 0, err
+		}
+		return time.Duration(days * float64(24*time.Hour)), nil
+	}
+	return time.ParseDuration(s)
+}
+
 // SIGHUP-Reload (out of scope for Issue #65): uncritical runtime values such as
 // retention period and log level could become reloadable on SIGHUP in a follow-up
 // issue. Structural/startup flags (bind addresses, datadir, shard count, batch
@@ -128,9 +141,12 @@ func main() {
 		queryIfaceHttp  = fs.String("queryhttp", envOrString("queryhttp", DefaultHTTPQueryAddr), "TCP Bind address for http query server in the form host:port. To disable set to empty string")
 		numShards       = fs.Int("numshards", envOrInt("numshards", DefaultNumShards), "Set number of shards per index")
 		retentionPeriod = fs.String("retention", envOrString("retention", DefaultRetentionPeriod), "Data retention period. Minimum is 24 hours")
+		indexDur        = fs.String("indexdur", envOrString("indexdur", "24h"), "Index time slice (e.g. 24h or 7d). Larger slices mean fewer, larger indexes")
+		retentionCheck  = fs.String("retentioncheck", envOrString("retentioncheck", "1h"), "How often expired indexes are swept (e.g. 1h)")
 		cpuProfile      = fs.String("cpuprof", envOrString("cpuprof", ""), "Where to write CPU profiling data. Not written if not set")
 		memProfile      = fs.String("memprof", envOrString("memprof", ""), "Where to write memory profiling data. Not written if not set")
-		inputFormat     = fs.String("input", envOrString("input", DefaultInputFormat), "Message format of input (supported: syslog, fortios)")
+		inputFormat     = fs.String("input", envOrString("input", DefaultInputFormat), "Message format of input (supported: syslog, fortios, bsd)")
+		framing         = fs.String("framing", envOrString("framing", "auto"), "TCP message framing: auto (default), lf, or octet (RFC 6587)")
 		showVersion     = fs.Bool("version", false, "Print version information and exit")
 	)
 	fs.Usage = printHelp
@@ -147,9 +163,17 @@ func main() {
 	}
 
 	// Get the retention period.
-	retention, err := time.ParseDuration(*retentionPeriod)
+	retention, err := parseDurationFlag(*retentionPeriod, "retention")
 	if err != nil {
 		log.Fatalf("failed to parse retention period '%s'", *retentionPeriod)
+	}
+	indexDuration, err := parseDurationFlag(*indexDur, "indexdur")
+	if err != nil {
+		log.Fatalf("failed to parse index duration '%s'", *indexDur)
+	}
+	retentionCheckIntv, err := parseDurationFlag(*retentionCheck, "retentioncheck")
+	if err != nil {
+		log.Fatalf("failed to parse retention check interval '%s'", *retentionCheck)
 	}
 
 	log.SetFlags(log.LstdFlags)
@@ -168,12 +192,14 @@ func main() {
 	engine := ekanite.NewEngine(absDataDir)
 	engine.NumShards = *numShards
 	engine.RetentionPeriod = retention
+	engine.IndexDuration = indexDuration
+	engine.RetentionCheckInterval = retentionCheckIntv
 
 	if err := engine.Open(); err != nil {
 		log.Fatalf("failed to open engine: %s", err.Error())
 	}
-	log.Printf("engine opened with shard number of %d, retention period of %s",
-		engine.NumShards, engine.RetentionPeriod)
+	log.Printf("engine opened with shard number of %d, retention period of %s, index duration of %s",
+		engine.NumShards, engine.RetentionPeriod, engine.IndexDuration)
 
 	// Start the simple query server if requested.
 	if *queryIface != "" {
@@ -210,7 +236,7 @@ func main() {
 			log.Printf("TLS successfully configured")
 		}
 
-		if err := startTCPCollector(*tcpIface, *inputFormat, tlsConfig, batcher); err != nil {
+		if err := startTCPCollector(*tcpIface, *inputFormat, *framing, tlsConfig, batcher); err != nil {
 			log.Fatalf("failed to start TCP collector: %s", err.Error())
 		}
 		log.Printf("TCP collector listening to %s", *tcpIface)
@@ -235,8 +261,8 @@ func main() {
 	stopProfile()
 }
 
-func startTCPCollector(iface, format string, tls *tls.Config, batcher *ekanite.Batcher) error {
-	collector, err := input.NewCollector("tcp", iface, format, tls)
+func startTCPCollector(iface, format, framing string, tls *tls.Config, batcher *ekanite.Batcher) error {
+	collector, err := input.NewCollector("tcp", iface, format, framing, tls)
 	if err != nil {
 		return fmt.Errorf(("failed to create TCP collector: %s"), err.Error())
 	}
@@ -248,7 +274,7 @@ func startTCPCollector(iface, format string, tls *tls.Config, batcher *ekanite.B
 }
 
 func startUDPCollector(iface, format string, batcher *ekanite.Batcher) error {
-	collector, err := input.NewCollector("udp", iface, format, nil)
+	collector, err := input.NewCollector("udp", iface, format, "", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create UDP collector: %s", err.Error())
 	}
@@ -407,6 +433,8 @@ func printHelp() {
 
 Data/Engine:
   -datadir string       Set data directory (default "/var/opt/ekanite")
+  -indexdur string      Index time slice (e.g. 24h or 7d). Larger slices mean fewer, larger indexes (default "24h")
+  -retentioncheck string  How often expired indexes are swept (e.g. 1h) (default "1h")
   -batchsize int        Indexing batch size (default 300)
   -batchtime int        Indexing batch timeout, in milliseconds (default 1000)
   -maxpending int       Maximum pending index events (default 1000)
@@ -416,7 +444,8 @@ Data/Engine:
 Ingest:
   -tcp string           Syslog server TCP bind address in the form host:port. To disable set to empty string (default "localhost:5514")
   -udp string           Syslog server UDP bind address in the form host:port. If not set, not started
-  -input string         Message format of input (supported: syslog, fortios) (default "syslog")
+  -input string         Message format of input (supported: syslog, fortios, bsd) (default "syslog")
+  -framing string       TCP message framing: auto (default), lf, or octet (RFC 6587)
 
 Query:
   -query string         TCP Bind address for query server in the form host:port. To disable set to empty string (default "localhost:9950")
@@ -445,6 +474,7 @@ Environment variables:
 Supported input formats:
   syslog                RFC5424-compatible syslog lines
   fortios               FortiGate FortiOS key-value lines
+  bsd                   RFC 3164 (BSD) syslog lines
 
 Build with version info:
   go build -ldflags "-X main.version=1.4.0 -X main.commit=$(git rev-parse --short HEAD)" ./cmd/ekanited

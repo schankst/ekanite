@@ -59,8 +59,9 @@ type Collector interface {
 
 // TCPCollector represents a network collector that accepts and handler TCP connections.
 type TCPCollector struct {
-	iface  string
-	format string
+	iface   string
+	format  string
+	framing string
 
 	addr      net.Addr
 	tlsConfig *tls.Config
@@ -74,8 +75,9 @@ type UDPCollector struct {
 
 // NewCollector returns a network collector of the specified type, that will bind
 // to the given inteface on Start(). If config is non-nil, a secure Collector will
-// be returned. Secure Collectors require the protocol be TCP.
-func NewCollector(proto, iface, format string, tlsConfig *tls.Config) (Collector, error) {
+// be returned. Secure Collectors require the protocol be TCP. framing selects
+// the TCP message framing: "auto" (default), "lf", or "octet" (RFC 6587).
+func NewCollector(proto, iface, format, framing string, tlsConfig *tls.Config) (Collector, error) {
 	// Verify that a parser can be instantiated. The actual parser that is used will
 	// be created by the connection handler.
 	_, err := NewParser(format)
@@ -87,6 +89,7 @@ func NewCollector(proto, iface, format string, tlsConfig *tls.Config) (Collector
 		return &TCPCollector{
 			iface:     iface,
 			format:    format,
+			framing:   framing,
 			tlsConfig: tlsConfig,
 		}, nil
 	} else if strings.ToLower(proto) == "udp" {
@@ -143,7 +146,7 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 		panic(fmt.Sprintf("failed to create TCP connection parser:%s", err.Error()))
 	}
 
-	delimiter := NewSyslogDelimiter(msgBufSize)
+	delimiter := newFrameDelimiter(s.framing, msgBufSize)
 	reader := bufio.NewReader(conn)
 	var log string
 	var match bool
