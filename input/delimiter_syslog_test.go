@@ -64,7 +64,7 @@ func Test_SyslogDelimiter(t *testing.T) {
 	}
 }
 
-func TestSyslogDelimiter_Vestige(t *testing.T) {
+func TestSyslogDelimiter_flushRemainder(t *testing.T) {
 	tests := []struct {
 		name          string
 		line          string
@@ -72,25 +72,25 @@ func TestSyslogDelimiter_Vestige(t *testing.T) {
 		expectedMatch bool
 	}{
 		{
-			name:          "vestige zero",
+			name:          "flushRemainder zero",
 			line:          "",
 			expectedEvent: "",
 			expectedMatch: false,
 		},
 		{
-			name:          "vestige no match",
+			name:          "flushRemainder no match",
 			line:          "12\n",
 			expectedEvent: "",
 			expectedMatch: false,
 		},
 		{
-			name:          "vestige match",
+			name:          "flushRemainder match",
 			line:          "<12>3 ",
 			expectedEvent: "<12>3 ",
 			expectedMatch: true,
 		},
 		{
-			name:          "vestige rich match",
+			name:          "flushRemainder rich match",
 			line:          "<145>1 OOM on line 42, dummy.java\n\tclass_loader.jar",
 			expectedEvent: "<145>1 OOM on line 42, dummy.java\n\tclass_loader.jar",
 			expectedMatch: true,
@@ -102,9 +102,9 @@ func TestSyslogDelimiter_Vestige(t *testing.T) {
 		for _, c := range tt.line {
 			d.Push(byte(c))
 		}
-		e, m := d.Vestige()
+		e, m := d.flushRemainder()
 		if e != tt.expectedEvent || m != tt.expectedMatch {
-			t.Errorf("test %s: vestige test failed, got %s %v, expected %s %v", tt.name, e, m, tt.expectedEvent, tt.expectedMatch)
+			t.Errorf("test %s: flushRemainder test failed, got %s %v, expected %s %v", tt.name, e, m, tt.expectedEvent, tt.expectedMatch)
 		}
 	}
 }

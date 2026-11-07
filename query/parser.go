@@ -113,7 +113,6 @@ func (p *Parser) Parse() (Expr, error) {
 
 	expr, err := p.parseFieldExpr()
 	if err != nil {
-		fmt.Println("return err from first call to parse:", err.Error())
 		return nil, err
 	}
 

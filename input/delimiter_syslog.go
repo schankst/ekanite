@@ -56,10 +56,10 @@ func (s *SyslogDelimiter) Push(b byte) (string, bool) {
 	return dispatch, true
 }
 
-// Vestige returns the bytes which have been pushed to SyslogDelimiter, since
-// the last Syslog message was returned, but only if the buffer appears
-// to be a valid syslog message.
-func (s *SyslogDelimiter) Vestige() (string, bool) {
+// flushRemainder returns the bytes which have been pushed to SyslogDelimiter,
+// since the last Syslog message was returned, but only if the remaining buffer
+// appears to be a valid syslog message.
+func (s *SyslogDelimiter) flushRemainder() (string, bool) {
 	delimiter := syslogRegex.FindIndex(s.buffer)
 	if delimiter == nil {
 		s.buffer = nil
