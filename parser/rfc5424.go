@@ -21,13 +21,21 @@ type RFC5424 struct {
 	matcher *regexp.Regexp
 	sdEle   *regexp.Regexp
 	sdParam *regexp.Regexp
+	stats   func(key string, delta int64)
 }
 
-var rfc5424Stats = func(key string, delta int64) {}
-
-// Stats sets the statistics callback for RFC5424 parsing.
+// Stats sets the statistics callback for RFC5424 parsing. Stored per instance
+// so concurrent collectors wiring their own parser do not race on a shared
+// global counter target (Issue #3).
 func (p *RFC5424) Stats(callback func(key string, delta int64)) {
-	rfc5424Stats = callback
+	p.stats = callback
+}
+
+// add bumps a statistic if a callback is wired.
+func (p *RFC5424) add(key string, delta int64) {
+	if p.stats != nil {
+		p.stats(key, delta)
+	}
 }
 
 // Init compiles the RFC5424 matcher.
@@ -62,13 +70,13 @@ func (p *RFC5424) Init() {
 func (p *RFC5424) Parse(raw []byte, result *map[string]interface{}) {
 	m := p.matcher.FindStringSubmatch(strings.TrimPrefix(string(raw), BOM))
 	if m == nil || len(m) != 9 {
-		rfc5424Stats("rfc5424Unparsed", 1)
+		p.add("rfc5424Unparsed", 1)
 		return
 	}
 	pri, err := strconv.Atoi(m[1])
 	// RFC 5424 §6.2.1: PRI is a single byte in the range 0-191.
 	if err != nil || pri < 0 || pri > 191 {
-		rfc5424Stats("rfc5424Unparsed", 1)
+		p.add("rfc5424Unparsed", 1)
 		return
 	}
 	ver, _ := strconv.Atoi(m[2])
@@ -104,7 +112,7 @@ func (p *RFC5424) Parse(raw []byte, result *map[string]interface{}) {
 	}
 	out["message"] = message
 
-	rfc5424Stats("rfc5424Parsed", 1)
+	p.add("rfc5424Parsed", 1)
 	*result = out
 }
 

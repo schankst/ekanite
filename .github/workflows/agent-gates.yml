@@ -35,7 +35,7 @@ jobs:
   race:
     name: Gate G1 — go test -race
     needs: baseline
-    continue-on-error: true # bekannt rot bis MS2/G1 (bbolt checkptr, Issue #3); wird in #39 auf false gestellt
+    continue-on-error: false # grün seit Issue #2/#3 (bleve v1.0.14, bbolt 1.3.5; Parser-Stats-Race gefixt)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

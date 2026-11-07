@@ -7,13 +7,21 @@ import (
 )
 
 // FortiOS parses FortiGate FortiOS key-value syslog lines into Ekanite event fields.
-type FortiOS struct{}
+type FortiOS struct {
+	stats func(key string, delta int64)
+}
 
-var fortiosStats = func(key string, delta int64) {}
-
-// Stats sets the statistics callback for FortiOS parsing.
+// Stats sets the statistics callback for FortiOS parsing. Stored per instance
+// so concurrent collectors do not race on a shared global (Issue #3).
 func (p *FortiOS) Stats(callback func(key string, delta int64)) {
-	fortiosStats = callback
+	p.stats = callback
+}
+
+// add bumps a statistic if a callback is wired.
+func (p *FortiOS) add(key string, delta int64) {
+	if p.stats != nil {
+		p.stats(key, delta)
+	}
 }
 
 // Init prepares the FortiOS parser for use.
@@ -23,13 +31,13 @@ func (p *FortiOS) Init() {}
 func (p *FortiOS) Parse(raw []byte, result *map[string]interface{}) {
 	fields := parseFortiOSKV(string(raw))
 	if len(fields) == 0 {
-		fortiosStats("fortiosUnparsed", 1)
+		p.add("fortiosUnparsed", 1)
 		return
 	}
 
 	ts, ok := fortiOSTimestamp(fields["date"], fields["time"])
 	if !ok {
-		fortiosStats("fortiosUnparsed", 1)
+		p.add("fortiosUnparsed", 1)
 		return
 	}
 
@@ -54,7 +62,7 @@ func (p *FortiOS) Parse(raw []byte, result *map[string]interface{}) {
 		out["message"] = string(raw)
 	}
 
-	fortiosStats("fortiosParsed", 1)
+	p.add("fortiosParsed", 1)
 	*result = out
 }
 
