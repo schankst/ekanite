@@ -22,13 +22,25 @@ func (e Event) ID() DocID {
 		uint64(e.ReferenceTime().UnixNano()), uint64(e.Sequence)))
 }
 
-// Data returns the indexable data.
+// Data returns the indexable data. In addition to the raw Message, all parsed
+// fields (host, app, pid, msgid, facility, severity, source_ip, etc.), the
+// source IP and the time fields are carried in the document so they are
+// field-searchable (Issue #34). The Message keeps the raw line for full-text
+// search; the structured fields enable `field:value` queries.
 func (e Event) Data() interface{} {
-	return struct {
-		Message string
-	}{
-		Message: e.Text,
+	doc := make(map[string]interface{}, len(e.Parsed)+4)
+	for k, v := range e.Parsed {
+		doc[k] = v
 	}
+	// Distinct structured fields (overwrite any parsed-field collisions with
+	// the canonical document fields).
+	doc["Message"] = e.Text
+	doc["ReferenceTime"] = e.ReferenceTime()
+	doc["ReceptionTime"] = e.ReceptionTime
+	if e.SourceIP != "" {
+		doc["source_ip"] = e.SourceIP
+	}
+	return doc
 }
 
 // Source returns the original received data.
