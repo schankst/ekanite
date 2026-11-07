@@ -114,6 +114,14 @@ type Engine struct {
 	// RetentionCheckInterval controls how often expired indexes are swept.
 	// Configurable via -retentioncheck (Issue #64).
 	RetentionCheckInterval time.Duration
+	// WipeEnabled, when set, overwrites index files with zeroes before removal
+	// during retention so deleted data is not trivially recoverable from disk
+	// (Issue #92). Default off; enabling it has a disk-write cost.
+	WipeEnabled bool
+	// AuditLogger, when non-nil, receives a JSONL line per retention deletion
+	// (timestamp, index path, wiped flag) as an immutable deletion record
+	// (Issue #92).
+	AuditLogger *log.Logger
 
 	mu      sync.RWMutex
 	indexes Indexes
@@ -140,7 +148,7 @@ func NewEngine(path string) *Engine {
 
 // Open opens the engine.
 func (e *Engine) Open() error {
-	if err := os.MkdirAll(e.path, 0755); err != nil {
+	if err := os.MkdirAll(e.path, 0700); err != nil {
 		return err
 	}
 	d, err := os.Open(e.path)
@@ -233,11 +241,24 @@ func (e *Engine) enforceRetention() {
 	filtered := e.indexes[:0]
 	for _, i := range e.indexes {
 		if i.Expired(time.Now().UTC(), e.RetentionPeriod) {
+			wiped := false
+			if e.WipeEnabled {
+				if err := WipeIndex(i); err != nil {
+					e.Logger.Printf("retention wipe failed for index %s: %s", i.path, err.Error())
+				} else {
+					wiped = true
+				}
+			}
 			if err := DeleteIndex(i); err != nil {
 				e.Logger.Printf("retention enforcement failed to delete index %s: %s", i.path, err.Error())
 			} else {
 				e.Logger.Printf("retention enforcement deleted index %s", i.path)
 				stats.Add("retentionEnforcementDeletions", 1)
+				if e.AuditLogger != nil {
+					// Immutable deletion record (JSONL): timestamp, path, wiped flag.
+					e.AuditLogger.Printf(`{"ts":%q,"index":%q,"wiped":%t}`,
+						time.Now().UTC().Format(time.RFC3339), i.path, wiped)
+				}
 			}
 		} else {
 			filtered = append(filtered, i)

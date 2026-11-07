@@ -2,9 +2,13 @@ package ekanite
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -190,6 +194,72 @@ func TestEngine_Open(t *testing.T) {
 	err := e.Open()
 	if e == nil {
 		t.Fatalf("failed to open engine: %s", err.Error())
+	}
+}
+
+// TestEngine_Permissions asserts the datadir and created index files are
+// owner-only (0700/0600) so stored logs are not world-readable (Issue #90).
+func TestEngine_Permissions(t *testing.T) {
+	dataDir := tempPath()
+	defer os.RemoveAll(dataDir)
+
+	e := NewEngine(dataDir)
+	if err := e.Open(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Datadir must be 0700.
+	st, err := os.Stat(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := st.Mode().Perm(); perm != 0700 {
+		t.Errorf("datadir mode = %o, want 0700", perm)
+	}
+
+	// Index an event so an index + shard files are created.
+	ev := NewEvent()
+	ev.Event = &input.Event{
+		Text:          "test line",
+		Parsed:        map[string]interface{}{"timestamp": "2024-01-01T00:00:00Z"},
+		ReceptionTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Sequence:      1,
+	}
+	if err := e.Index([]*Event{ev}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The index directory (and its files) must be owner-only.
+	e.mu.RLock()
+	indexes := e.indexes
+	e.mu.RUnlock()
+	if len(indexes) != 1 {
+		t.Fatalf("expected 1 index, got %d", len(indexes))
+	}
+	idx := indexes[0]
+
+	idxSt, err := os.Stat(idx.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := idxSt.Mode().Perm(); perm != 0700 {
+		t.Errorf("index dir mode = %o, want 0700", perm)
+	}
+
+	err = filepath.Walk(idx.path, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if perm := info.Mode().Perm(); perm != 0600 {
+			t.Errorf("file %s mode = %o, want 0600", path, perm)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -530,5 +600,47 @@ func newIndexableEvent(line string, refTime time.Time) *Event {
 			Text:          line,
 			ReceptionTime: refTime,
 		},
+	}
+}
+
+// TestEngine_RetentionAuditAndWipe verifies that retention deletion writes an
+// audit record (JSONL) and, when WipeEnabled, overwrites files before removal
+// (Issue #92).
+func TestEngine_RetentionAuditAndWipe(t *testing.T) {
+	dataDir := tempPath()
+	defer os.RemoveAll(dataDir)
+
+	var audit bytes.Buffer
+	e := NewEngine(dataDir)
+	e.IndexDuration = 24 * time.Hour
+	e.RetentionPeriod = 0 // expire immediately (endTime.Add(0) before now)
+	e.WipeEnabled = true
+	e.AuditLogger = log.New(&audit, "", 0)
+
+	if err := e.Open(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Index an event in the past so its index is expired.
+	yesterday := time.Now().UTC().Add(-24 * time.Hour)
+	ev := newIndexableEvent("test retention line", yesterday)
+	if err := e.Index([]*Event{ev}); err != nil {
+		t.Fatal(err)
+	}
+
+	e.enforceRetention()
+
+	if len(e.indexes) != 0 {
+		t.Fatalf("expected 0 indexes after retention, got %d", len(e.indexes))
+	}
+	line := audit.String()
+	if line == "" {
+		t.Fatal("no audit record written")
+	}
+	if !strings.Contains(line, `"wiped":true`) {
+		t.Errorf("audit record should mark wiped: %s", line)
+	}
+	if !strings.Contains(line, `"ts":`) || !strings.Contains(line, `"index":`) {
+		t.Errorf("audit record missing ts/index fields: %s", line)
 	}
 }
