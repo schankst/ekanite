@@ -27,6 +27,12 @@ var (
 	stats = expvar.NewMap("ekanite")
 )
 
+// Build information, overridable via -ldflags.
+var (
+	version = "dev"
+	commit  = "unknown"
+)
+
 // Program parameters
 var datadir string
 var tcpIface string
@@ -62,6 +68,10 @@ const (
 	DefaultInputFormat     = "syslog"
 )
 
+func versionString() string {
+	return fmt.Sprintf("ekanite %s (%s) %s", version, commit, runtime.Version())
+}
+
 func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 	var (
@@ -80,10 +90,16 @@ func main() {
 		retentionPeriod = fs.String("retention", DefaultRetentionPeriod, "Data retention period. Minimum is 24 hours")
 		cpuProfile      = fs.String("cpuprof", "", "Where to write CPU profiling data. Not written if not set")
 		memProfile      = fs.String("memprof", "", "Where to write memory profiling data. Not written if not set")
-		inputFormat     = fs.String("input", DefaultInputFormat, "Message format of input (only syslog supported)")
+		inputFormat     = fs.String("input", DefaultInputFormat, "Message format of input (supported: syslog, M200)")
+		showVersion     = fs.Bool("version", false, "Print version information and exit")
 	)
 	fs.Usage = printHelp
 	fs.Parse(os.Args[1:])
+
+	if *showVersion {
+		fmt.Println(versionString())
+		os.Exit(0)
+	}
 
 	absDataDir, err := filepath.Abs(*datadir)
 	if err != nil {
@@ -227,6 +243,11 @@ func startHTTPQueryServer(iface string, engine *ekanite.Engine) {
 
 func startDiagServer(iface string) {
 	diagServer := status.NewService(iface)
+	diagServer.BuildInfo = map[string]interface{}{
+		"version":    version,
+		"commit":     commit,
+		"go_version": runtime.Version(),
+	}
 	if err := diagServer.Start(); err != nil {
 		log.Fatalf("failed to start status server on %s: %s", iface, err.Error())
 	}
@@ -342,6 +363,45 @@ func stopProfile() {
 }
 
 func printHelp() {
-	fmt.Println("ekanited [options]")
-	fs.PrintDefaults()
+	fmt.Print(`ekanited [options]
+
+Data/Engine:
+  -datadir string       Set data directory (default "/var/opt/ekanite")
+  -batchsize int        Indexing batch size (default 300)
+  -batchtime int        Indexing batch timeout, in milliseconds (default 1000)
+  -maxpending int       Maximum pending index events (default 1000)
+  -numshards int        Set number of shards per index (default 4)
+  -retention string     Data retention period. Minimum is 24 hours (default "168h")
+
+Ingest:
+  -tcp string           Syslog server TCP bind address in the form host:port. To disable set to empty string (default "localhost:5514")
+  -udp string           Syslog server UDP bind address in the form host:port. If not set, not started
+  -input string         Message format of input (supported: syslog, M200) (default "syslog")
+
+Query:
+  -query string         TCP Bind address for query server in the form host:port. To disable set to empty string (default "localhost:9950")
+  -queryhttp string     TCP Bind address for http query server in the form host:port. To disable set to empty string (default "localhost:8080")
+
+Diagnostics:
+  -diag string          expvar and pprof bind address in the form host:port. If not set, not started (default "localhost:9951")
+
+Profiling:
+  -cpuprof string       Where to write CPU profiling data. Not written if not set
+  -memprof string       Where to write memory profiling data. Not written if not set
+
+TLS:
+  -tlspem string        path to CA PEM file for TLS-enabled TCP server. If not set, TLS not activated
+  -tlskey string        path to CA key file for TLS-enabled TCP server. If not set, TLS not activated
+
+General:
+  -version              Print version information and exit
+  -h, -help             Print this help
+
+Supported input formats:
+  syslog                RFC5424-compatible syslog lines
+  M200                  Watchguard Firebox/M200 format (alias: Watchguard)
+
+Build with version info:
+  go build -ldflags "-X main.version=1.4.0 -X main.commit=$(git rev-parse --short HEAD)" ./cmd/ekanited
+`)
 }
