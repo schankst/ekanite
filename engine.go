@@ -16,11 +16,10 @@ import (
 
 // Engine defaults
 const (
-	DefaultNumShards       = 16
-	DefaultIndexDuration   = 24 * time.Hour
-	DefaultRetentionPeriod = 24 * time.Hour
-
-	RetentionCheckInterval = time.Hour
+	DefaultNumShards          = 16
+	DefaultIndexDuration      = 24 * time.Hour
+	DefaultRetentionPeriod    = 24 * time.Hour
+	DefaultRetentionCheckIntv = time.Hour
 )
 
 // Engine stats
@@ -112,6 +111,9 @@ type Engine struct {
 	NumShards       int           // Number of shards to use when creating an index.
 	IndexDuration   time.Duration // Duration of created indexes.
 	RetentionPeriod time.Duration // How long after Index end-time to hang onto data.
+	// RetentionCheckInterval controls how often expired indexes are swept.
+	// Configurable via -retentioncheck (Issue #64).
+	RetentionCheckInterval time.Duration
 
 	mu      sync.RWMutex
 	indexes Indexes
@@ -126,12 +128,13 @@ type Engine struct {
 // NewEngine returns a new indexing engine, which will use any data located at path.
 func NewEngine(path string) *Engine {
 	return &Engine{
-		path:            path,
-		NumShards:       DefaultNumShards,
-		IndexDuration:   DefaultIndexDuration,
-		RetentionPeriod: DefaultRetentionPeriod,
-		done:            make(chan struct{}),
-		Logger:          log.New(os.Stderr, "[engine] ", log.LstdFlags),
+		path:                   path,
+		NumShards:              DefaultNumShards,
+		IndexDuration:          DefaultIndexDuration,
+		RetentionPeriod:        DefaultRetentionPeriod,
+		RetentionCheckInterval: DefaultRetentionCheckIntv,
+		done:                   make(chan struct{}),
+		Logger:                 log.New(os.Stderr, "[engine] ", log.LstdFlags),
 	}
 }
 
@@ -215,7 +218,7 @@ func (e *Engine) runRetentionEnforcement() {
 		case <-e.done:
 			return
 
-		case <-time.After(RetentionCheckInterval):
+		case <-time.After(e.RetentionCheckInterval):
 			stats.Add("retentionEnforcementRun", 1)
 			e.enforceRetention()
 		}
