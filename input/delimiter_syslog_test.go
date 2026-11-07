@@ -39,6 +39,13 @@ func Test_SyslogDelimiter(t *testing.T) {
 			line:     "<12>1 sshd is <down>\n<145>1 sshd is up<33>4\n<67>2 password accepted",
 			expected: []string{"<12>1 sshd is <down>", "<145>1 sshd is up<33>4"},
 		},
+		{
+			// #18: A 4-digit PRI (<9999>) must still be recognized as a syslog
+			// line start so misconfigured senders are not silently dropped.
+			name:     "four_digit_pri",
+			line:     "<9999>1 first line\n<22>1 second line\n",
+			expected: []string{"<9999>1 first line"},
+		},
 	}
 
 	for _, tt := range tests {

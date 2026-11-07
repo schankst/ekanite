@@ -23,10 +23,14 @@ func (e *Event) ReferenceTime() time.Time {
 	if e.referenceTime.IsZero() {
 		if e.Parsed == nil {
 			e.referenceTime = e.ReceptionTime
-		} else if refTime, err := time.Parse(time.RFC3339, e.Parsed["timestamp"].(string)); err != nil {
-			e.referenceTime = e.ReceptionTime
+		} else if ts, ok := e.Parsed["timestamp"].(string); ok {
+			if refTime, err := time.Parse(time.RFC3339, ts); err != nil {
+				e.referenceTime = e.ReceptionTime
+			} else {
+				e.referenceTime = refTime
+			}
 		} else {
-			e.referenceTime = refTime
+			e.referenceTime = e.ReceptionTime
 		}
 
 	}
