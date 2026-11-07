@@ -5,6 +5,7 @@ import (
 	"strconv"
 )
 
+// RFC5424 parses RFC 5424 syslog lines into Ekanite event fields.
 type RFC5424 struct {
 	matcher *regexp.Regexp
 }

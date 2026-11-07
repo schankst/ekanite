@@ -24,13 +24,22 @@ To see all Ekanite options pass `-h` on the command line.
 
 __If you want to build Ekanite__, either because you want the latest code or a pre-built binary for platform is not available, take a look at [CONTRIBUTING.md](https://github.com/ekanite/ekanite/blob/master/CONTRIBUTING.md).
 
-Sending logs to Ekanite
-------------
-For now, for Ekanite to accept logs, your syslog client must be configured such that the log lines are [RFC5424](http://tools.ietf.org/html/rfc5424) compliant, and in the following format:
+Logs an Ekanite senden
+----------------------
+Ekanite nimmt Logs über TCP und/oder UDP entgegen (Flags `-tcp`, `-udp`; zum Deaktivieren des TCP-Collectors `-tcp` auf einen leeren String setzen). Das Eingabeformat wird über `-input` gewählt.
 
-    <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROC-ID MSGID MSG"
+### Eingabeformate (`-input`)
 
-Consult the RFC to learn what each of these fields is. The TIMESTAMP field must be in [RFC3339](http://www.ietf.org/rfc/rfc3339.txt) format.  Both [rsyslog](http://www.rsyslog.com/) and [syslog-ng](http://www.balabit.com/network-security/syslog-ng) support templating, which make it **very easy** for those programs to format logs correctly and transmit the logs to Ekanite. Templates and installation instructions for both systems are below.
+| Wert | Bedeutung |
+|---|---|
+| `syslog` (Standard) | [RFC5424](http://tools.ietf.org/html/rfc5424)-kompatible Syslog-Zeilen (TIMESTAMP in [RFC3339](http://www.ietf.org/rfc/rfc3339.txt)). |
+| `M200` | Watchguard-Firebox/M200-Format (alternativ interner Standardname `Watchguard`). |
+
+Für `syslog` muss der Sende-Client Zeilen im folgenden Format liefern:
+
+    <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROC-ID MSGID MSG
+
+Sowohl [rsyslog](http://www.rsyslog.com/) als auch [syslog-ng](http://www.balabit.com/network-security/syslog-ng) (Sende-Clients) unterstützen Templates, mit denen sich RFC5424-Zeilen einfach erzeugen und an Ekanite übertragen lassen. Beispiele:
 
 **rsyslog**
 
@@ -118,8 +127,23 @@ Die Browser-Oberfläche akzeptiert dieselben bleve-Queries. Standardmäßig ist 
 
 ![Data Diagram](img/eq.png)
 
+## TLS (TCP-Eingang)
+
+Für den TCP-Collector kann mTLS aktiviert werden, wenn **beide** Flags gesetzt sind:
+
+- `-tlspem`: Pfad zur PEM-Datei (Zertifikat/CA-Material, wie von der aktuellen Implementierung erwartet).
+- `-tlskey`: Pfad zur Schlüsseldatei.
+
+Wichtige Einschränkungen der aktuellen Implementierung (ehrlich/bestandsnah):
+
+- Es wird **Client-Authentifizierung erzwungen** (`RequireAndVerifyClientCert`, mTLS).
+- Der private Key wird als **PKCS#1-RSA** geparst (`ParsePKCS1PrivateKey`). Andere Key-Typen (z. B. ECDSA, PKCS#8/Ed25519, je nach Format) werden beim Start mit einem TLS-Konfigurationsfehler abgelehnt.
+- Es wird keine vollständige Zertifikatskette als separate Konfiguration aufgebaut; die PEM-Datei wird als einzelnes Zertifikat eingelesen und zusätzlich als Client-CA-Pool-Material verwendet.
+
+TLS gilt nur für den TCP-Eingang. UDP bleibt unverschlüsselt.
+
 ## Diagnostics
-Basic statistics and diagnostics are available. Visit `http://localhost:9951/debug/vars` to retrieve this information. The host and port can be changed via the `-diag` command-line option.
+Basic statistics and diagnostics are available (expvar/pprof). Visit `http://localhost:9951/debug/vars` to retrieve this information. The bind address can be changed via the `-diag` command-line option; to disable the diagnostics server, set `-diag` to an empty string.
 
 ## Building New Parsers
 The architecture now supports the easy implementation of new parsers beyond the stock syslog in 3 easy steps:
