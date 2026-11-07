@@ -13,8 +13,10 @@ const (
 	WatchguardName    = "M200"
 )
 
+// StatsCollector records parser/input statistics as key/delta increments.
 type StatsCollector func(key string, delta int64)
 
+// LogParser parses a raw log line into result fields.
 type LogParser interface {
 	Parse(raw []byte, result *map[string]interface{})
 	Init()

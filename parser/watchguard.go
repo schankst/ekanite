@@ -5,6 +5,7 @@ import (
 	"strconv"
 )
 
+// Watchguard parses WatchGuard Firebox/M200-style log lines into Ekanite event fields.
 type Watchguard struct {
 	matcher *regexp.Regexp
 }
