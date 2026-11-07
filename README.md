@@ -151,6 +151,17 @@ TLS gilt nur für den TCP-Eingang. UDP bleibt unverschlüsselt.
 ## Diagnostics
 Basic statistics and diagnostics are available (expvar/pprof). Visit `http://localhost:9951/debug/vars` to retrieve this information. The bind address can be changed via the `-diag` command-line option; to disable the diagnostics server, set `-diag` to an empty string.
 
+## Deployment
+
+Beispiel-Artefakte für den Betrieb:
+
+- **systemd:** [`deploy/systemd/ekanited.service`](deploy/systemd/ekanited.service) (Autostart/Restart, `LimitNOFILE`, Datadir via `StateDirectory`; `WatchdogSec` ist bewusst auskommentiert bis #55).
+- **Container:** [`Dockerfile`](Dockerfile) (Multi-Stage, `CGO_ENABLED=0`, Version via `-ldflags`/Build-Args, konsistent mit #43).
+
+**Datadir-Persistenz:** Das Datenverzeichnis (`-datadir`, z. B. `/var/lib/ekanite`) muss persistent sein (Host-Pfad oder Container-Volume, z. B. `-v ekanite-data:/var/lib/ekanite`). Ohne Persistenz gehen Indexdaten beim Neustart/Neuanlegen des Containers verloren.
+
+**Upgrade/Wartung (Maintenance-Fenster):** Für ein kontrolliertes Upgrade Dienst stoppen, Binary/Container-Image ersetzen und Dienst wieder starten. Das Datadir bleibt erhalten; Datadir-Kompatibilität zwischen Versionen vor dem Upgrade prüfen (Release-Hinweise/CHANGELOG). Für konsistente Backups vor dem Upgrade siehe [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
 ## Building New Parsers
 The architecture now supports the easy implementation of new parsers beyond the stock syslog in 3 easy steps:
 
