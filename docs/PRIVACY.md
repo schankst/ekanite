@@ -27,20 +27,20 @@ Stand: 2026-11-07. Dieses Dokument beschreibt, wie der Ekanite-Server (Fork `sch
 
 ## 5. Löschverfahren
 
-- **Aktuell**: Retention löscht ganze Tagesindizes (`DeleteIndex` = `os.RemoveAll`). Eine Löschung/Redaktion einzelner Events ist **GAP-2 (#73)**; eine unwiderrufliche Löschung/Wipe ist **PRIV-3 (#92)** — jeweils noch offene Issues.
-- **Auskunfts-/Löschansprüche (Art. 15/17 DSGVO)**: über #73 (Data-Export/-Löschung) bzw. #94 geplant; aktuell nur manuell über das Datadir durch den Betreiber möglich.
-- Zwischen geplanter/logischer Löschung und physischer Entfernung kann eine Lücke bestehen, solange GAP-2/PRIV-3 nicht umgesetzt sind.
+- **Retention** löscht ganze Tagesindizes (`DeleteIndex` = `os.RemoveAll`). Optional überschreibt `-wipe` die Indexdateien zuvor mit Nullen (unwiderrufliche Löschung gegen naheliegende Wiederherstellung; hat Schreibkosten, Default aus).
+- **Löschbeleg**: Mit `-auditlog <datei>` wird pro Retention-Löschung eine JSONL-Zeile geschrieben (`ts`, `index`, `wiped`) als nachvollziehbarer Löschbeleg (Default: deaktiviert). Datei wird mit `0600` angelegt.
+- Eine Löschung/Redaktion einzelner Events ist **GAP-2 (#73)**; Auskunfts-/Löschansprüche (Art. 15/17 DSGVO) siehe **#73/#94** — jeweils noch offene Issues. Aktuell nur manuell über das Datadir durch den Betreiber möglich.
 
 ## 6. Zugriffskontrolle
 
 - **Query-Ports**: Authentifizierung fehlt noch (**#78, S1**) — bis dahin nur auf Loopback binden (z. B. `-query localhost:...`). Nicht authentifiziert ins Netz exponieren.
 - **Diagnostics** (`-diag`, expvar/pprof): ungeschützt (**#52**) — nur auf Loopback binden oder deaktivieren.
-- **Dateisystem**: Das Datadir wird aktuell mit `0755` angelegt; eine restriktivere Berechtigung (`0700`) ist geplant (**PRIV-1, #90**). Betreiber sollten die Berechtigungen betrieblich absichern.
+- **Dateisystem**: Das Datadir und alle Index-/Shard-Dateien werden mit `0700`/`0600` (Owner-only) angelegt; `ekanited` setzt zusätzlich eine restriktive `umask` (0077). Bestehende Indizes werden beim Öffnen auf diese Berechtigungen repariert (**#90**).
 
 ## 7. Verschlüsselung
 
 - **Transport**: optional TLS/mTLS für den TCP-Eingang über `-tlspem`/`-tlskey` (aktuelle Flags; ECDSA/Chain-Reload siehe **#74**). UDP bleibt unverschlüsselt. Siehe auch README (TLS-Einschränkungen).
-- **At rest**: **keine** anwendungsseitige Verschlüsselung — Entscheidung/Umsetzung (z. B. verschlüsselte Volumes) siehe **PRIV-1 (#90)**; Backups siehe **OPS-5 (#70)**.
+- **At rest**: Keine anwendungsseitige Verschlüsselung; Dateien liegen im Klartext (aber nur für den Owner lesbar, `0700`/`0600`, siehe §6). Entscheidung: Verschlüsselung auf Volume-Ebene (z. B. LUKS) wird empfohlen und ist als Betriebsentscheidung dokumentiert (**#90**); Backups siehe **OPS-5 (#70)**.
 
 ## 8. Backups
 
