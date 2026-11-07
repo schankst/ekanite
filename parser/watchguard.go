@@ -15,11 +15,9 @@ func (p *Watchguard) Stats(callback func(key string, delta int64)) {
 	watchguardStats = callback
 }
 
-//
 // Test at regex-golang.appspot.com/assets/html/index.html
 //
-//([ADFJMNOS][a-z]{2}\s[0-9]{1,2}\s[0-2][0-9]:[0-5]?[0-9]:[0-5]?[0-9])\s([^ ]+)\s([^ ]+)\s\(([^ ]+)\)\s([^ ]+)\smsg_id=\"([0-9\-]+)\"\s([^ ]+)\s([^ ]+)\s([^ ]+)\s(.+$)
-//
+// ([ADFJMNOS][a-z]{2}\s[0-9]{1,2}\s[0-2][0-9]:[0-5]?[0-9]:[0-5]?[0-9])\s([^ ]+)\s([^ ]+)\s\(([^ ]+)\)\s([^ ]+)\smsg_id=\"([0-9\-]+)\"\s([^ ]+)\s([^ ]+)\s([^ ]+)\s(.+$)
 func (p *Watchguard) Init() {
 	leading := `(?s)`
 	pri := `<([0-9]{1,3})>`
