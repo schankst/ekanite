@@ -151,6 +151,30 @@ TLS gilt nur für den TCP-Eingang. UDP bleibt unverschlüsselt.
 ## Diagnostics
 Basic statistics and diagnostics are available (expvar/pprof). Visit `http://localhost:9951/debug/vars` to retrieve this information. The bind address can be changed via the `-diag` command-line option; to disable the diagnostics server, set `-diag` to an empty string.
 
+## Skalierung auf einer Maschine (Tuning)
+
+Konfiguration erfolgt über CLI-Flags oder Umgebungsvariablen `EKANITE_<FLAGNAME>` (Flag-Name in Großbuchstaben, z. B. `EKANITE_BATCHSIZE`). Vorrang: **explizites CLI-Flag überschreibt die Env-Var** (das Flag setzt den effektiven Wert; ohne Flag gilt der Env-Default, ohne Env der kompilierte Default). `-version` hat keine Env-Var.  
+SIGHUP-Reload ist **nicht** implementiert (Folge-Thema): perspektivisch reloadbar wären nur unkritische Werte (Retention, Log-Level); Struktur-/Startup-Parameter (Bind-Adressen, `-datadir`, `-numshards`, Batch-Größen, TLS-Pfade) erfordern einen Neustart.
+
+| Parameter (Flag / Env) | Wirkt auf | Metrik (Verweis #54/#58/#59) | Empfohlener Bereich / Hinweis |
+|---|---|---|---|
+| `-datadir` / `EKANITE_DATADIR` | Speicherort der Indexdaten (Shards) | I/O, Plattenbelegung (Ops/Retention, #54/#59) | Schnelles, persistentes Volume; Kapazität ≥ erwartetes Datenvolumen × Retention. |
+| `-batchsize` / `EKANITE_BATCHSIZE` | Dokumente pro Index-Batch (Durchsatz vs. Latenz) | Index-Lag, Batch-/Flush-Verhalten (#54/#58) | Default 300; erhöhen (z. B. 1000–5000) bei hohem Durchsatz, wenn Latenz unkritisch. |
+| `-batchtime` / `EKANITE_BATCHTIME` (ms) | Maximale Wartezeit bis Batch-Flush | Index-Latenz, Teil-Batches (#54/#58) | Default 1000 ms; senken für geringere Latenz, erhöhen für bessere Bündelung. |
+| `-maxpending` / `EKANITE_MAXPENDING` | Puffer für ausstehende Index-Events (Backpressure) | Queue-Tiefe/Verwerfungen, Speicher (#54/#58) | Default 1000; erhöhen bei Bursts, wenn RAM ausreicht; zu klein → Gegenruck bei Last. |
+| `-numshards` / `EKANITE_NUMSHARDS` | Shards pro Zeitindex (Parallelität der Indexierung) | CPU-Auslastung, Index-Durchsatz (#54/#58) | Default 4; an CPU-Kerne/Last anpassen; Änderung erfordert Neustart/Datadir-Kompatibilität prüfen. |
+| `-retention` / `EKANITE_RETENTION` | Aufbewahrungsdauer (mind. 24h) | Plattenbelegung, Löschzyklen (#54/#59) | Default `168h` (7 Tage); nach Compliance/Platzbedarf setzen. |
+| `-tcp` / `EKANITE_TCP` | TCP-Ingest-Bind (`host:port`, leer = aus) | Verbindungen, Ingest-Rate, Fehler (#54/#58) | Nur benötigte Interfaces binden; in Containern oft `0.0.0.0:<port>`. |
+| `-udp` / `EKANITE_UDP` | UDP-Ingest-Bind (leer = aus) | Empfangene Pakete/Verluste (#54/#58) | Nur bei Bedarf; UDP ist nicht zuverlässig/verschlüsselt. |
+| `-query` / `EKANITE_QUERY` | Telnet-Query-Bind (leer = aus) | Query-Latenz/Fehler (#54/#58) | Standard `localhost:9950`; **nicht unauthentifiziert exponieren** (siehe Sicherheitswarnung oben). |
+| `-queryhttp` / `EKANITE_QUERYHTTP` | HTTP-Query-Bind (leer = aus) | Query-Latenz/Fehler (#54/#58) | Standard `localhost:8080`; **nicht unauthentifiziert exponieren**. |
+| `-diag` / `EKANITE_DIAG` | Diagnostics/pprof-Bind (leer = aus) | Runtime-/pprof-Metriken (#54/#58) | Nur intern erreichbar machen; exponiertes pprof ist ein Sicherheitsrisiko. |
+| `-input` / `EKANITE_INPUT` | Eingabeformat (`syslog`, `fortios`) | Parse-Fehler/-Rate (#54/#58) | Passend zum Sender wählen. |
+| `-tlspem` / `EKANITE_TLSPEM` | TLS-Zertifikat/PEM für TCP-Ingest (mTLS, mit `-tlskey`) | TLS-Handshake/Fehler (#54/#58) | Beide setzen oder beide leer; Key-Format-Einschränkungen siehe TLS-Abschnitt. |
+| `-tlskey` / `EKANITE_TLSKEY` | TLS-Private-Key für TCP-Ingest (mTLS, mit `-tlspem`) | TLS-Handshake/Fehler (#54/#58) | Datei-Rechte härten; beide setzen oder beide leer. |
+| `-cpuprof` / `EKANITE_CPUPROF` | Pfad für CPU-Profil (Diagnose) | Profil-Ausgabe (ad hoc) | Nur temporär zur Analyse aktivieren. |
+| `-memprof` / `EKANITE_MEMPROF` | Pfad für Heap-Profil (Diagnose) | Profil-Ausgabe (ad hoc) | Nur temporär zur Analyse aktivieren. |
+
 ## Deployment
 
 Beispiel-Artefakte für den Betrieb:

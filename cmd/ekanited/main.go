@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -68,6 +70,41 @@ const (
 	DefaultInputFormat     = "syslog"
 )
 
+// envKey returns the environment variable name for a CLI flag: EKANITE_<FLAGNAME>.
+func envKey(flagName string) string {
+	return "EKANITE_" + strings.ToUpper(flagName)
+}
+
+// envOrString returns the value of EKANITE_<flagName> if set (including empty),
+// otherwise fallback. Using LookupEnv preserves intentionally empty values, which
+// matters for flags where an empty string disables a component (e.g. -tcp, -udp).
+func envOrString(flagName, fallback string) string {
+	if v, ok := os.LookupEnv(envKey(flagName)); ok {
+		return v
+	}
+	return fallback
+}
+
+// envOrInt returns the parsed integer value of EKANITE_<flagName> if set and
+// valid, otherwise fallback. Invalid env values are ignored so a bad environment
+// does not prevent startup; the explicit CLI flag still wins when provided.
+func envOrInt(flagName string, fallback int) int {
+	v, ok := os.LookupEnv(envKey(flagName))
+	if !ok {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+// SIGHUP-Reload (out of scope for Issue #65): uncritical runtime values such as
+// retention period and log level could become reloadable on SIGHUP in a follow-up
+// issue. Structural/startup flags (bind addresses, datadir, shard count, batch
+// sizing, TLS paths) are not reloadable without restart.
+
 func versionString() string {
 	return fmt.Sprintf("ekanite %s (%s) %s", version, commit, runtime.Version())
 }
@@ -75,22 +112,25 @@ func versionString() string {
 func main() {
 	fs = flag.NewFlagSet("", flag.ExitOnError)
 	var (
-		datadir         = fs.String("datadir", DefaultDataDir, "Set data directory")
-		batchSize       = fs.Int("batchsize", DefaultBatchSize, "Indexing batch size")
-		batchTimeout    = fs.Int("batchtime", DefaultBatchTimeout, "Indexing batch timeout, in milliseconds")
-		indexMaxPending = fs.Int("maxpending", DefaultIndexMaxPending, "Maximum pending index events")
-		tcpIface        = fs.String("tcp", DefaultTCPServer, "Syslog server TCP bind address in the form host:port. To disable set to empty string")
-		udpIface        = fs.String("udp", "", "Syslog server UDP bind address in the form host:port. If not set, not started")
-		diagIface       = fs.String("diag", DefaultDiagsIface, "expvar and pprof bind address in the form host:port. If not set, not started")
-		caPemPath       = fs.String("tlspem", "", "path to CA PEM file for TLS-enabled TCP server. If not set, TLS not activated")
-		caKeyPath       = fs.String("tlskey", "", "path to CA key file for TLS-enabled TCP server. If not set, TLS not activated")
-		queryIface      = fs.String("query", DefaultQueryAddr, "TCP Bind address for query server in the form host:port. To disable set to empty string")
-		queryIfaceHttp  = fs.String("queryhttp", DefaultHTTPQueryAddr, "TCP Bind address for http query server in the form host:port. To disable set to empty string")
-		numShards       = fs.Int("numshards", DefaultNumShards, "Set number of shards per index")
-		retentionPeriod = fs.String("retention", DefaultRetentionPeriod, "Data retention period. Minimum is 24 hours")
-		cpuProfile      = fs.String("cpuprof", "", "Where to write CPU profiling data. Not written if not set")
-		memProfile      = fs.String("memprof", "", "Where to write memory profiling data. Not written if not set")
-		inputFormat     = fs.String("input", DefaultInputFormat, "Message format of input (supported: syslog, fortios)")
+		// Flag defaults are read from EKANITE_<FLAGNAME> (flag name uppercased) when
+		// set; otherwise the compiled-in default is used. An explicitly provided CLI
+		// flag always wins over the environment-derived default (flag-wins-over-env).
+		datadir         = fs.String("datadir", envOrString("datadir", DefaultDataDir), "Set data directory")
+		batchSize       = fs.Int("batchsize", envOrInt("batchsize", DefaultBatchSize), "Indexing batch size")
+		batchTimeout    = fs.Int("batchtime", envOrInt("batchtime", DefaultBatchTimeout), "Indexing batch timeout, in milliseconds")
+		indexMaxPending = fs.Int("maxpending", envOrInt("maxpending", DefaultIndexMaxPending), "Maximum pending index events")
+		tcpIface        = fs.String("tcp", envOrString("tcp", DefaultTCPServer), "Syslog server TCP bind address in the form host:port. To disable set to empty string")
+		udpIface        = fs.String("udp", envOrString("udp", ""), "Syslog server UDP bind address in the form host:port. If not set, not started")
+		diagIface       = fs.String("diag", envOrString("diag", DefaultDiagsIface), "expvar and pprof bind address in the form host:port. If not set, not started")
+		caPemPath       = fs.String("tlspem", envOrString("tlspem", ""), "path to CA PEM file for TLS-enabled TCP server. If not set, TLS not activated")
+		caKeyPath       = fs.String("tlskey", envOrString("tlskey", ""), "path to CA key file for TLS-enabled TCP server. If not set, TLS not activated")
+		queryIface      = fs.String("query", envOrString("query", DefaultQueryAddr), "TCP Bind address for query server in the form host:port. To disable set to empty string")
+		queryIfaceHttp  = fs.String("queryhttp", envOrString("queryhttp", DefaultHTTPQueryAddr), "TCP Bind address for http query server in the form host:port. To disable set to empty string")
+		numShards       = fs.Int("numshards", envOrInt("numshards", DefaultNumShards), "Set number of shards per index")
+		retentionPeriod = fs.String("retention", envOrString("retention", DefaultRetentionPeriod), "Data retention period. Minimum is 24 hours")
+		cpuProfile      = fs.String("cpuprof", envOrString("cpuprof", ""), "Where to write CPU profiling data. Not written if not set")
+		memProfile      = fs.String("memprof", envOrString("memprof", ""), "Where to write memory profiling data. Not written if not set")
+		inputFormat     = fs.String("input", envOrString("input", DefaultInputFormat), "Message format of input (supported: syslog, fortios)")
 		showVersion     = fs.Bool("version", false, "Print version information and exit")
 	)
 	fs.Usage = printHelp
@@ -396,6 +436,11 @@ TLS:
 General:
   -version              Print version information and exit
   -h, -help             Print this help
+
+Environment variables:
+  Most flags can be set via EKANITE_<FLAGNAME> (flag name uppercased), e.g.
+  EKANITE_BATCHSIZE, EKANITE_TCP, EKANITE_RETENTION, EKANITE_DATADIR. An
+  explicit CLI flag overrides the environment variable. -version has no env var.
 
 Supported input formats:
   syslog                RFC5424-compatible syslog lines
