@@ -23,7 +23,7 @@ deploy/
 ## 2. Setup-Schritte
 
 1. **Labels** anlegen: `status:in-progress`, `status:blocked`, `status:done-review` (TaskManager-Pflege).
-2. **Branch-Schutz** auf `master`: PR-Pflicht, 1 Review (Mensch), Statuschecks `agent-gates`.
+2. **Branch-Schutz** auf `master`: **aktiviert** (2026-11-07, nach Veröffentlichung des Repos): 1 Review (Mensch), Checks `Gate G0 — fmt/vet/build/test` + `Gate — Issue/Milestone-Konsistenz`, Strict-Branch, lineare Historie, enforce_admins.
 3. **Env für TaskManager/CI:** `GH_TOKEN` (Repo-Scope) als Secret `repo-token` hinterlegen.
 4. **PR-Template** aktivieren (siehe §5).
 5. **Milestones** existieren bereits (MS1–MS7) und sind die Wave-Laufräume.
@@ -63,6 +63,18 @@ Begründung `continue-on-error`: Der Ist-Zustand ist rot (Race-Gate #3, vuln). D
 - **TaskManager:** deterministisches Skript (Bash + `gh` CLI) statt LLM — Planung ist Datenfluss, keine Kreativität. Optional: Codex-CLI-Agent, der nur `gh`-Aufrufe ausführt.
 - **Worker (8 Rollen):** 1–2 instanziierte Claude-Code-Agenten **pro Lane**, gestartet mit Kontext (Eigentumsliste + DoD aus `docs/AGENTS.md`); Test-first per `GOFLAGS` und CI-Gates.
 - **TestingAgent/DocsAgent:** können derselbe Claude-Code-Agent im jeweiligen Eigentumsbereich sein (eigene Session).
+
+### 4.3 Verifizierter lokaler Werkzeug-Stand (2026-11-07)
+| Werkzeug | Lokal gefunden | Verdict |
+|---|---|---|
+| `claude` (Claude Code, /usr/bin/claude) | ✅ | **Primär-Worker** — ausgereift, Subagenten, gut für Go-Multi-Datei-Aufgaben |
+| `opencode` (~/.opencode/bin) | ✅ | OSS-Alternative für Worker; Fallback, wenn Modellkosten/Wahlfreiheit zählen |
+| `cline` (v3.0.74) | ✅ | nur bei IDE-Arbeit (VS Code); kein Headless-Betrieb |
+| `pi` (@earendil-works/pi-coding-agent v1.5.0) | ✅ | Pilot/Kandidat für einzelne Lanes; noch nicht Battle-tested |
+| `omp` (lokale Umgebung) | ✅ | Assistenz für Supervisor/TaskManager (Orchestrierung/Doku), kein Worker-Executor |
+| `hermes` | ❌ (kein Binary) | aus der Auswahl entfernen |
+
+**Finale Empfehlung:** Worker = **Claude Code** (primär) / OpenCode (Fallback); TaskManager+Supervisor-Assist = **omp** + deterministische `gh`-Skripte; `cline` nur in IDE; `pi` als Pilot für 1 Lane evaluieren; `hermes` entfällt.
 
 **Warum diese Wahl:** Das Wellenmodell ist deterministisch (Graph + Gates) — der Bedarf ist starke, fokussierte Implementierungs-Agenten (nicht autonome Multi-Agent-Frameworks). Der größte Hebel ist einheitlicher Kontext (`AGENTS.md`), externe Gate-Erzwingung (CI) und ein menschlicher Supervisor. Claude Code + Codex CLI decken das mit minimaler Infrastruktur ab.
 
