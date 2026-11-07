@@ -1,0 +1,23 @@
+[Unit]
+Description=Ekanite syslog server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ekanited -datadir /var/lib/ekanite -tcp 0.0.0.0:5514
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+# StateDirectory creates /var/lib/ekanite with correct ownership when using
+# DynamicUser/StateDirectory semantics; adjust User/Group as needed for your setup.
+StateDirectory=ekanite
+# WatchdogSec=30s — NOT set here; health/watchdog integration is tracked in #55.
+
+# Optional environment/config examples (uncomment and adjust):
+# Environment="EKANITED_QUERY=127.0.0.1:9950"
+# Environment="EKANITED_QUERYHTTP=127.0.0.1:8080"
+# Environment="EKANITED_DIAG="
+# EnvironmentFile=-/etc/default/ekanited
+
+[Install]
+WantedBy=multi-user.target

@@ -18,13 +18,17 @@ Features include:
 Search is implemented using the [bleve](http://www.blevesearch.com/) search library. For some performance analysis of bleve, and of the sharding techniques used by Ekanite, check out [this post](http://www.philipotoole.com/increasing-bleve-performance-sharding/).
 
 ## Getting started
-The quickest way to get running on OSX and Linux is to download a pre-built release binary. You can find these binaries on the [Github releases page](https://github.com/ekanite/ekanite/releases). Once installed, you can start Ekanite like so:
-```bash
-ekanited -datadir ~/ekanite_data # Or any directory of your choice.
-```
-To see all Ekanite options pass `-h` on the command line.
 
-__If you want to build Ekanite__, either because you want the latest code or a pre-built binary for platform is not available, take a look at [CONTRIBUTING.md](https://github.com/ekanite/ekanite/blob/master/CONTRIBUTING.md).
+Build Ekanite from source (Go 1.24+):
+
+```bash
+go build ./...
+./ekanited -datadir ~/ekanite_data # Or any directory of your choice.
+```
+
+For versioned builds, embed version metadata via `-ldflags` (see Issue #43 and [CONTRIBUTING.md](CONTRIBUTING.md#building)).
+
+To see all Ekanite options pass `-h` on the command line.
 
 Logs an Ekanite senden
 ----------------------
@@ -146,6 +150,17 @@ TLS gilt nur für den TCP-Eingang. UDP bleibt unverschlüsselt.
 
 ## Diagnostics
 Basic statistics and diagnostics are available (expvar/pprof). Visit `http://localhost:9951/debug/vars` to retrieve this information. The bind address can be changed via the `-diag` command-line option; to disable the diagnostics server, set `-diag` to an empty string.
+
+## Deployment
+
+Beispiel-Artefakte für den Betrieb:
+
+- **systemd:** [`deploy/systemd/ekanited.service`](deploy/systemd/ekanited.service) (Autostart/Restart, `LimitNOFILE`, Datadir via `StateDirectory`; `WatchdogSec` ist bewusst auskommentiert bis #55).
+- **Container:** [`Dockerfile`](Dockerfile) (Multi-Stage, `CGO_ENABLED=0`, Version via `-ldflags`/Build-Args, konsistent mit #43).
+
+**Datadir-Persistenz:** Das Datenverzeichnis (`-datadir`, z. B. `/var/lib/ekanite`) muss persistent sein (Host-Pfad oder Container-Volume, z. B. `-v ekanite-data:/var/lib/ekanite`). Ohne Persistenz gehen Indexdaten beim Neustart/Neuanlegen des Containers verloren.
+
+**Upgrade/Wartung (Maintenance-Fenster):** Für ein kontrolliertes Upgrade Dienst stoppen, Binary/Container-Image ersetzen und Dienst wieder starten. Das Datadir bleibt erhalten; Datadir-Kompatibilität zwischen Versionen vor dem Upgrade prüfen (Release-Hinweise/CHANGELOG). Für konsistente Backups vor dem Upgrade siehe [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Building New Parsers
 The architecture now supports the easy implementation of new parsers beyond the stock syslog in 3 easy steps:
