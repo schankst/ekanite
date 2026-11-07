@@ -23,7 +23,7 @@ deploy/
 ## 2. Setup-Schritte
 
 1. **Labels** anlegen: `status:in-progress`, `status:blocked`, `status:done-review` (TaskManager-Pflege).
-2. **Branch-Schutz** auf `master`: **aktiviert** (2026-11-07, nach Veröffentlichung des Repos): 1 Review (Mensch), Checks `Gate G0 — fmt/vet/build/test` + `Gate — Issue/Milestone-Konsistenz`, Strict-Branch, lineare Historie, enforce_admins.
+2. **Branch-Schutz** auf `master`: **aktiviert** (2026-11-07, nach Veröffentlichung des Repos): Checks `Gate G0 — fmt/vet/build/test` + `Gate — Issue/Milestone-Konsistenz`, Strict-Branch, lineare Historie, enforce_admins. **Review-Pflicht = 0** (Solo-Fork: `required_approving_review_count=0`); ein Menschlicher Review ist fehlblockiert, weil nur ein Contributor existiert („can’t approve your own PR“). Wird auf 1 erhöht, sobald ein zweiter Reviewer/Bot vorhanden ist.
 3. **Env für TaskManager/CI:** `GH_TOKEN` (Repo-Scope) als Secret `repo-token` hinterlegen.
 4. **PR-Template** aktivieren (siehe §5).
 5. **Milestones** existieren bereits (MS1–MS7) und sind die Wave-Laufräume.
