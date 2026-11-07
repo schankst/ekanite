@@ -6,8 +6,12 @@ import (
 )
 
 const (
-	// SYSLOG_DELIMITER indicates the start of a syslog line
-	SYSLOG_DELIMITER = `<[0-9]{1,3}>`
+	// SYSLOG_DELIMITER indicates the start of a syslog line. Up to 4 PRI digits
+	// are accepted so that a 4-digit PRI (e.g. <9999>, typical of misconfigured
+	// senders) is still recognized instead of dropping the line (Issue #18).
+	// Valid PRIs are 0-191 and validated by the parser; accepting more digits at
+	// the framing layer avoids silent loss before parsing.
+	SYSLOG_DELIMITER = `<[0-9]{1,4}>`
 )
 
 var syslogRegex *regexp.Regexp
