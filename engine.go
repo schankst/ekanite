@@ -368,7 +368,7 @@ func (e *Engine) Search(query string) (<-chan string, error) {
 					e.Logger.Println("error getting document:", err.Error())
 					break
 				}
-				stats.Add("docsIDsRetrived", 1)
+				stats.Add("docsIDsRetrieved", 1)
 				c <- string(b) // There is excessive byte-slice-to-strings here.
 			}
 		}

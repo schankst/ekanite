@@ -136,7 +136,7 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 				return
 			}
 
-			log, match = delimiter.Vestige()
+			log, match = delimiter.flushRemainder()
 		} else {
 			stats.Add("tcpBytesRead", 1)
 			log, match = delimiter.Push(b)
