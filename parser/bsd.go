@@ -11,13 +11,20 @@ import (
 // The optional leading PRI ("<34>Oct ...") is honored when present.
 type BSD struct {
 	matcher *regexp.Regexp
+	stats   func(key string, delta int64)
 }
 
-var bsdStats = func(key string, delta int64) {}
-
-// Stats sets the statistics callback for BSD parsing.
+// Stats sets the statistics callback for BSD parsing. Stored per instance so
+// concurrent collectors do not race on a shared global (Issue #3).
 func (p *BSD) Stats(callback func(key string, delta int64)) {
-	bsdStats = callback
+	p.stats = callback
+}
+
+// add bumps a statistic if a callback is wired.
+func (p *BSD) add(key string, delta int64) {
+	if p.stats != nil {
+		p.stats(key, delta)
+	}
 }
 
 // Init compiles the BSD matcher.
@@ -39,14 +46,14 @@ var bsdMonths = map[string]time.Month{
 func (p *BSD) Parse(raw []byte, result *map[string]interface{}) {
 	m := p.matcher.FindStringSubmatch(string(raw))
 	if m == nil {
-		bsdStats("bsdUnparsed", 1)
+		p.add("bsdUnparsed", 1)
 		return
 	}
-	bsdStats("bsdParsed", 1)
+	p.add("bsdParsed", 1)
 
 	month, ok := bsdMonths[m[2]]
 	if !ok {
-		bsdStats("bsdUnparsed", 1)
+		p.add("bsdUnparsed", 1)
 		return
 	}
 	day, _ := strconv.Atoi(m[3])
