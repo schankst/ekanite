@@ -12,10 +12,12 @@ type RFC5424 struct {
 
 var rfc5424Stats = func(key string, delta int64) {}
 
+// Stats sets the statistics callback for RFC5424 parsing.
 func (p *RFC5424) Stats(callback func(key string, delta int64)) {
 	rfc5424Stats = callback
 }
 
+// Init compiles the RFC5424 matcher.
 func (p *RFC5424) Init() {
 	leading := `(?s)`
 	pri := `<([0-9]{1,3})>`
@@ -29,6 +31,7 @@ func (p *RFC5424) Init() {
 	p.matcher = regexp.MustCompile(leading + pri + ver + `\s` + ts + `\s` + host + `\s` + app + `\s` + pid + `\s` + id + `\s` + msg)
 }
 
+// Parse parses a raw RFC5424 line into named fields.
 func (p *RFC5424) Parse(raw []byte, result *map[string]interface{}) {
 	m := p.matcher.FindStringSubmatch(string(raw))
 	if m == nil || len(m) != 9 {

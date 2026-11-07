@@ -35,7 +35,11 @@ type DocID string
 // DocIDs is a slice of DocIDs.
 type DocIDs []DocID
 
+// Len returns the number of DocIDs in the slice (sort.Interface).
 func (a DocIDs) Len() int { return len(a) }
+
+// Less reports whether the DocID at i sorts before the one at j, by the two
+// embedded 64-bit words (msw, then lsw). Maintains time/sequence ordering.
 func (a DocIDs) Less(i, j int) bool {
 	x := a[i]
 	y := a[j]
@@ -58,6 +62,8 @@ func (a DocIDs) Less(i, j int) bool {
 	}
 	return msw0 < msw1
 }
+
+// Swap swaps two elements (sort.Interface).
 func (a DocIDs) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // Document specifies the interface required by an object if it is to be indexed.
@@ -83,13 +89,19 @@ type Indexes []*Index
 // Indexes are ordered by decreasing end time.
 // If two indexes have the same end time, then order by decreasing start time.
 // This means that the first index in the slice covers the latest time range.
+// Len returns the number of indexes in the slice (sort.Interface).
 func (i Indexes) Len() int { return len(i) }
+
+// Less orders two indexes by decreasing end time (latest first), tie-broken
+// by decreasing start time.
 func (i Indexes) Less(u, v int) bool {
 	if i[u].endTime.After(i[v].endTime) {
 		return true
 	}
 	return i[u].startTime.After(i[v].startTime)
 }
+
+// Swap swaps two elements (sort.Interface).
 func (i Indexes) Swap(u, v int) { i[u], i[v] = i[v], i[u] }
 
 // NewIndex returns an Index for the given start and end time, with the requested shards. It

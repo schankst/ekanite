@@ -1,55 +1,60 @@
 #!/usr/bin/env bash
 # godoc-check.sh — meldet exportierte Go-Symbole ohne GoDoc-Kommentar.
 # Scannt rekursiv alle *.go (ohne *_test.go). Exit 1 wenn Verletzungen gefunden.
-set -euo pipefail
+set -uo pipefail
 
 violations=0
+total=0
 
 while IFS= read -r -d '' file; do
-  if ! awk -v file="$file" '
-  function check(name, lineno,    i, ok, start) {
-    ok = 0
-    i = lineno - 1
-    if (i >= 1 && prev[i] ~ /^[[:space:]]*\/\//) {
-      start = i
-      while (start >= 1 && prev[start] ~ /^[[:space:]]*\/\//) start--
-      start++
-      for (i = start; i < lineno; i++) {
-        if (prev[i] ~ "^[[:space:]]*//[[:space:]]*" name "\\b") { ok = 1; break }
-      }
-    }
-    if (!ok) {
-      printf "%s:%d: exported %s %s has no doc comment\n", file, lineno, kind, name
-      found++
-    }
+  extra=$(awk -v file="$file" '
+  function isComment(line) { return line ~ /^[[:space:]]*\// }
+  function hasDoc(symline, i,   j) {
+    # scan backwards over contiguous comment lines directly above
+    j = i - 1
+    while (j >= 1 && isComment(prev[j])) j--
+    j++
+    return (j < i)   # at least one comment line directly above
   }
-  { prev[NR] = $0 }
+  { prev[NR] = $0; isData[NR] = 0 }
+  # track block-comment / raw-string contexts minimally: skip lines that end a /* */
+  { data = data $0 }
+  END {}
   /^[[:space:]]*func[[:space:]]+\(/ {
     line = $0
     sub(/^[[:space:]]*func[[:space:]]+\([^)]*\)[[:space:]]+/, "", line)
-    if (match(line, /^([A-Z][A-Za-z0-9_]*)/, m)) { kind="func"; check(m[1], NR) }
+    if (match(line, /^[A-Z][A-Za-z0-9_]*/)) {
+      name = substr(line, RSTART, RLENGTH)
+      if (!hasDoc($0, NR)) { printf "%s:%d: exported func %s has no doc comment\n", file, NR, name; v++ }
+    }
     next
   }
   /^[[:space:]]*func[[:space:]]+[A-Z]/ {
-    if (match($0, /^[[:space:]]*func[[:space:]]+([A-Z][A-Za-z0-9_]*)/, m)) { kind="func"; check(m[1], NR) }
+    if (match($0, /^[[:space:]]*func[[:space:]]+([A-Z][A-Za-z0-9_]*)/, m)) {
+      if (!hasDoc($0, NR)) { printf "%s:%d: exported func %s has no doc comment\n", file, NR, m[1]; v++ }
+    }
     next
   }
   /^[[:space:]]*type[[:space:]]+[A-Z]/ {
-    if (match($0, /^[[:space:]]*type[[:space:]]+([A-Z][A-Za-z0-9_]*)/, m)) { kind="type"; check(m[1], NR) }
+    if (match($0, /^[[:space:]]*type[[:space:]]+([A-Z][A-Za-z0-9_]*)/, m)) {
+      if (!hasDoc($0, NR)) { printf "%s:%d: exported type %s has no doc comment\n", file, NR, m[1]; v++ }
+    }
     next
   }
-  /^[[:space:]]*var[[:space:]]+[A-Z]/ {
-    if (match($0, /^[[:space:]]*var[[:space:]]+([A-Z][A-Za-z0-9_]*)/, m)) { kind="var"; check(m[1], NR) }
+  /^[[:space:]]*(var|const)[[:space:]]+[A-Z]/ {
+    if (match($0, /^[[:space:]]*(var|const)[[:space:]]+([A-Z][A-Za-z0-9_]*)/, m)) {
+      if (!hasDoc($0, NR)) { printf "%s:%d: exported %s %s has no doc comment\n", file, NR, m[1], m[2]; v++ }
+    }
     next
   }
-  /^[[:space:]]*const[[:space:]]+[A-Z]/ {
-    if (match($0, /^[[:space:]]*const[[:space:]]+([A-Z][A-Za-z0-9_]*)/, m)) { kind="const"; check(m[1], NR) }
-    next
-  }
-  END { exit(found > 0 ? 1 : 0) }
-  ' "$file"; then
+  END { if (v>0) exit 1; exit 0 }
+  ' "$file")
+  rc=$?
+  if [ -n "$extra" ]; then
+    printf '%s\n' "$extra"
     violations=$((violations + 1))
   fi
+  total=$((total + rc))
 done < <(find . -name '*.go' ! -name '*_test.go' -print0 | sort -z)
 
 if [ "$violations" -gt 0 ]; then
