@@ -1,0 +1,109 @@
+name: agent-gates
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  baseline:
+    name: Gate G0 — fmt/vet/build/test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+      - name: go test
+        run: go test -count=1 ./...
+      - name: go mod verify
+        run: go mod verify
+
+  race:
+    name: Gate G1 — go test -race
+    needs: baseline
+    continue-on-error: true # bekannt rot bis MS2/G1 (bbolt checkptr, Issue #3); wird in #39 auf false gestellt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: go test -race
+        run: go test -race -count=1 ./...
+
+  vuln:
+    name: Gate G1 — govulncheck
+    needs: baseline
+    continue-on-error: true # aktiv nach SC-1 (#80/#82); wird in #82 auf false gestellt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  lint:
+    name: Gate G0/G2 — golangci-lint
+    needs: baseline
+    continue-on-error: true # aktiv nach GO-1 (#84)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=3m
+
+  coverage:
+    name: Gate G2 — Abdeckung nicht fallend
+    needs: baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Measure coverage
+        run: |
+          go test -coverprofile=/tmp/cov.out ./... > /dev/null
+          total=$(go tool cover -func=/tmp/cov.out | awk '/^total:/{print $NF}' | tr -d '%')
+          echo "coverage=${total}%"
+          # Baseline 50,9% (2026-11-07); Gate aktiv ab Implementierung (GO-6/#89)
+          if [ "$TOTAL_ANY" = "1" ]; then
+            awk -v t="$total" 'BEGIN{ if (t+0 < 50.9) { print "COVERAGE DROPPED", t; exit 1 } }'
+          fi
+        env:
+          TOTAL_ANY: "0"
+
+  hygiene:
+    name: Gate — Issue/Milestone-Konsistenz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check open issues have milestone
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          missing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 200 \
+            --json number,milestone --jq '[.[] | select(.milestone == null)] | length')
+          echo "issues without milestone: $missing"
+          if [ "$missing" != "0" ]; then echo "Alle Issues müssen einem Milestone zugeordnet sein"; exit 1; fi
