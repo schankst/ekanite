@@ -7,10 +7,8 @@ import (
 )
 
 const (
-	RFC5424Standard   = "RFC5424"
-	RFC5424Name       = "syslog"
-	WatchguardFirebox = "Watchguard"
-	WatchguardName    = "M200"
+	RFC5424Standard = "RFC5424"
+	RFC5424Name     = "syslog"
 )
 
 // StatsCollector records parser/input statistics as key/delta increments.
@@ -32,8 +30,7 @@ type LogHandler struct {
 }
 
 func supportedFormats() [][]string {
-	return [][]string{{RFC5424Name, RFC5424Standard},
-		{WatchguardName, WatchguardFirebox}}
+	return [][]string{{RFC5424Name, RFC5424Standard}}
 }
 
 // ValidFormat returns if the given format matches one of the possible formats.
@@ -58,9 +55,6 @@ func NewParser(f string) (*LogHandler, error) {
 	if f == RFC5424Name || f == RFC5424Standard {
 		p.Parser = &parser.RFC5424{}
 		p.Fmt = RFC5424Standard
-	} else if f == WatchguardName || f == WatchguardFirebox {
-		p.Parser = &parser.Watchguard{}
-		p.Fmt = WatchguardFirebox
 	}
 
 	log.Printf("input format parser created for %s", f)
