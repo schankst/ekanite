@@ -11,12 +11,15 @@ type FortiOS struct{}
 
 var fortiosStats = func(key string, delta int64) {}
 
+// Stats sets the statistics callback for FortiOS parsing.
 func (p *FortiOS) Stats(callback func(key string, delta int64)) {
 	fortiosStats = callback
 }
 
+// Init prepares the FortiOS parser for use.
 func (p *FortiOS) Init() {}
 
+// Parse parses a raw FortiOS line into named fields; returns nothing (result map).
 func (p *FortiOS) Parse(raw []byte, result *map[string]interface{}) {
 	fields := parseFortiOSKV(string(raw))
 	if len(fields) == 0 {

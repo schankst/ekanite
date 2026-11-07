@@ -18,6 +18,7 @@ type FieldExpr struct {
 
 func (f *FieldExpr) node() {}
 
+// String renders the field expression as field:term.
 func (f *FieldExpr) String() string {
 	return fmt.Sprintf("%s:%s", f.Field, f.Term)
 }
@@ -31,6 +32,7 @@ type BinaryExpr struct {
 
 func (b *BinaryExpr) node() {}
 
+// String renders the binary expression as "lhs op rhs".
 func (b *BinaryExpr) String() string {
 	return fmt.Sprintf("%s %s %s", b.LHS, tokens[b.Op], b.RHS)
 }
