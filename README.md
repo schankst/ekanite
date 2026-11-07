@@ -62,15 +62,39 @@ Add this template to `/etc/syslog-ng/syslog-ng.conf` and then restart syslog-ng 
 
 With these changes in place rsyslog or syslog-ng will continue to send logs to any existing destination, and also forward the logs to Ekanite.
 
-Searching the logs
-------------
-Search support is pretty simple at the moment. You have two options -- a simple telnet-like interface, and a browser-based query interface.
+Suche
+-----
+Ekanite bietet zwei Suchschnittstellen: eine einfache Telnet-artige Schnittstelle (`-query`, Standard `localhost:9950`) und eine Browser-Oberfläche (`-queryhttp`, Standard `http://localhost:8080`). Beide nutzen dieselbe Query-Engine.
 
-### Telnet interface
+### Query-Syntax (bleve Query String)
 
-Telnet to the query server (see the command line options) and enter a search term. The query language supported is the simple language supported by [bleve](http://godoc.org/github.com/blevesearch/bleve#NewQueryStringQuery), but a more sophisiticated query syntax, including searching for specific field values, may be supported soon.
+Die Abfragesprache basiert auf [bleves `QueryStringQuery`](https://pkg.go.dev/github.com/blevesearch/bleve#NewQueryStringQuery). Für einfache Suchen reicht meist:
 
-For example, below is an example search session, showing accesses to the login URL of a Wordpress site. The telnet clients connects to the query server and enters the string `login`
+| Beispiel | Bedeutung |
+|---|---|
+| `login` | Term-Suche nach „login“ |
+| `wp-login POST` | Mehrere Terme (kombiniert gemäß bleve-Default) |
+| `login -GET` | „login“, aber Treffer mit „GET“ ausschließen (`-`-Operator) |
+| `field:wert` | Feldsuche (nur für tatsächlich indizierte Felder sinnvoll; siehe Dokumentmodell) |
+| `log*` / `?` | Wildcards gemäß bleve-Query-String-Syntax |
+
+Hinweis: Die genaue Semantik (Phrasen, boolesche Operatoren, Escaping, Wildcard-Regeln) folgt bleve. Dieses README dokumentiert das beobachtbare Ekanite-Verhalten und die Grenzen; für fortgeschrittene Syntax ist die bleve-Dokumentation maßgeblich.
+
+### Dokumentmodell und indizierte Felder
+
+- **Gespeichert/ausgeliefert:** Als Suchtreffer liefert Ekanite die ursprüngliche Rohzeile (`Text`) der empfangenen Nachricht zurück (über Telnet zeilenweise, über HTTP als Liste).
+- **Indizierter Inhalt (aktuell):** Für die Volltextsuche wird der Nachrichteninhalt als Feld `Message` indiziert (tokenisiert, für die Suche aufbereitet). Zusätzliche Zeitfelder (`ReferenceTime`, `ReceptionTime`) sind im Index-Mapping vorhanden; die aktuell indizierte Datenstruktur befüllt jedoch nur `Message`. Andere vom Eingabeparser erkannte Felder (z. B. RFC5424-Metadaten) werden nicht pauschal als eigene, dokumentierte Suchfelder versprochen.
+- **Zeitbezug:** Als Referenzzeit dient — wenn parsebar — der `timestamp` aus dem geparsten Ereignis (RFC3339), sonst die Empfangszeit (`ReceptionTime`). Das beeinflusst die zeitliche Zuordnung/Indexierung; es gibt **keinen** eigenen Zeitfilter-Parameter in der Query-Schnittstelle.
+
+### Grenzen und Ergebnisreihenfolge
+
+- **10.000er-Limit pro Index-Suche:** Jede Suche gegen einen Zeit-Index ist auf maximal **10.000** Treffer begrenzt (`maxSearchHitSize`). Da Ekanite Daten in zeitbasierten Indizes (Shards/Indizes) hält, kann eine Abfrage mehrere Indizes durchlaufen; das Limit gilt pro Index-Suche, nicht als globaler „Top-N über alles“-Garantiewert.
+- **Reihenfolge:** Treffer werden innerhalb eines Index nach Dokument-ID sortiert (zeit-/sequenzbasiert, aufsteigend) zurückgegeben. Ekanite durchsucht Indizes sequentiell von früh nach spät, sodass Ergebnisse insgesamt **zeitstabil** in aufsteigender zeitlicher Ordnung erscheinen.
+- **Kein garantierter Vollständigkeitsvertrag:** Bei sehr großen Datenmengen oder Treffermengen am Limit können Ergebnisse abgeschnitten wirken. Queries sollten daher so spezifisch wie möglich formuliert werden.
+
+### Telnet-Schnittstelle
+
+Verbinde dich per Telnet mit dem Query-Server und sende pro Zeile eine Query. Leere Zeilen werden ignoriert. Nach den Ergebnissen sendet der Server zwei Leerzeilen als Ende-Markierung. Beispiel:
 
 ```
 $ telnet 127.0.0.1 9950
@@ -79,24 +103,18 @@ Connected to 127.0.0.1.
 Escape character is '^]'.
 login
 <134>0 2015-05-05T23:50:17.025568+00:00 fisher apache-access - - 65.98.59.154 - - [05/May/2015:23:50:12 +0000] "GET /wp-login.php HTTP/1.0" 200 206 "-" "-"
-<134>0 2015-05-06T01:24:41.232890+00:00 fisher apache-access - - 104.140.83.221 - - [06/May/2015:01:24:40 +0000] "GET /wp-login.php?action=register HTTP/1.0" 200 206 "http://www.philipotoole.com/" "Opera/9.80 (Windows NT 6.2; Win64; x64) Presto/2.12.388 Version/12.17"
-<134>0 2015-05-06T01:24:41.232895+00:00 fisher apache-access - - 104.140.83.221 - - [06/May/2015:01:24:40 +0000] "GET /wp-login.php?action=register HTTP/1.1" 200 243 "http://www.philipotoole.com/wp-login.php?action=register" "Opera/9.80 (Windows NT 6.2; Win64; x64) Presto/2.12.388 Version/12.17"
-<134>0 2015-05-06T02:47:54.612953+00:00 fisher apache-access - - 184.68.20.22 - - [06/May/2015:02:47:51 +0000] "GET /wp-login.php HTTP/1.1" 200 243 "-" "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.1 (KHTML, like Gecko) Chrome/24.0.1309.0 Safari/537.17"
-<134>0 2015-05-06T04:20:49.008609+00:00 fisher apache-access - - 193.104.41.186 - - [06/May/2015:04:20:46 +0000] "POST /wp-login.php HTTP/1.1" 200 206 "-" "Opera 10.00"
 ```
 
-Perhaps you only want to search for `POST` accesses to that URL:
+Negation/Filterung (Beispiel):
 
 ```
 login -GET
 <134>0 2015-05-06T04:20:49.008609+00:00 fisher apache-access - - 193.104.41.186 - - [06/May/2015:04:20:46 +0000] "POST /wp-login.php HTTP/1.1" 200 206 "-" "Opera 10.00"
 ```
 
-A more sophisticated client program is planned.
+### Browser-Schnittstelle
 
-### Browser interface
-
-The browser-based interface also accepts bleve-style queries, identical to those described in the _Telnet_ section. By default the browser interface is available at [http://localhost:8080](http://localhost:8080). An example session is shown below.
+Die Browser-Oberfläche akzeptiert dieselben bleve-Queries. Standardmäßig ist sie unter [http://localhost:8080](http://localhost:8080) erreichbar. Die Seite zeigt die Anzahl der gelieferten Treffer und die Suchdauer an.
 
 ![Data Diagram](img/eq.png)
 
