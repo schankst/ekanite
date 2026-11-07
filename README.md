@@ -18,13 +18,17 @@ Features include:
 Search is implemented using the [bleve](http://www.blevesearch.com/) search library. For some performance analysis of bleve, and of the sharding techniques used by Ekanite, check out [this post](http://www.philipotoole.com/increasing-bleve-performance-sharding/).
 
 ## Getting started
-The quickest way to get running on OSX and Linux is to download a pre-built release binary. You can find these binaries on the [Github releases page](https://github.com/ekanite/ekanite/releases). Once installed, you can start Ekanite like so:
-```bash
-ekanited -datadir ~/ekanite_data # Or any directory of your choice.
-```
-To see all Ekanite options pass `-h` on the command line.
 
-__If you want to build Ekanite__, either because you want the latest code or a pre-built binary for platform is not available, take a look at [CONTRIBUTING.md](https://github.com/ekanite/ekanite/blob/master/CONTRIBUTING.md).
+Build Ekanite from source (Go 1.24+):
+
+```bash
+go build ./...
+./ekanited -datadir ~/ekanite_data # Or any directory of your choice.
+```
+
+For versioned builds, embed version metadata via `-ldflags` (see Issue #43 and [CONTRIBUTING.md](CONTRIBUTING.md#building)).
+
+To see all Ekanite options pass `-h` on the command line.
 
 Logs an Ekanite senden
 ----------------------
