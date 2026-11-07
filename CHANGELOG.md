@@ -1,4 +1,27 @@
-## 1.4.0 (unreleased)
+# Changelog
+
+Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
+Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
+
+**Historic:** v1.3.0 (2017) war das letzte Upstream-Release. Dieser Fork (`schankst/ekanite`) dokumentiert ab 2026 Änderungen im Abschnitt „Unreleased“, bis ein neues Release geschnitten wird.
+
+## [Unreleased]
+
+### Added
+- Fork-Roadmap und Agent-/Wellen-Dokumentation (`docs/ROADMAP.md`, `docs/AGENTS.md`).
+
+### Changed
+- Go-Toolchain-/Modul-Modernisierung im Fork-Kontext (u. a. `go mod`/Dependency-Pflege gemäß Projektstand).
+
+### Fixed
+- (Noch keine veröffentlichten Fix-Einträge in diesem Abschnitt.)
+
+### Docs
+- Suchverhalten, Limits und Query-Syntax dokumentiert (README/docs).
+- README/Flags-Beschreibung an tatsächliche Eingabeformate, UDP und TLS-Verhalten angeglichen; fehlende GoDoc-Kommentare für exportierte Parser-/Input-Symbole ergänzt.
+- Hinweise zu Secure-Development-Themen und Modell-/Betriebs-Policy werden im Rahmen der Fork-Dokumentation gepflegt (siehe Issues/Roadmap).
+
+## 1.4.0 (unreleased, historisch)
 - [PR #95](https://github.com/ekanite/ekanite/pull/95): Refactor for multiple parsers. Thanks @jweisscrypto
 - [PR #97](https://github.com/ekanite/ekanite/pull/97): Enable 'go mod' support via Go 1.13.
 
