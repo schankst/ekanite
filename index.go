@@ -39,25 +39,37 @@ type DocID string
 type DocIDs []DocID
 
 // sortDocID reports whether x sorts before y, by the two embedded 64-bit words
-// (msw, then lsw). Maintains time/sequence ordering.
+// (msw, then lsw). Maintains time/sequence ordering. DocIDs are expected to be
+// 32 lowercase-hex chars; a malformed DocID sorts lexically without panicking
+// (Issue #51), so a stray non-hex value cannot crash a search.
 func sortDocID(x, y DocID) bool {
-	mustParse := func(s string) uint64 {
-		w, err := strconv.ParseUint(s, 16, 64)
-		if err != nil {
-			panic(fmt.Sprintf("failed to parse 64-bit word: %s", err.Error()))
-		}
-		return w
+	msw0, lsw0, ok0 := splitDocID(x)
+	msw1, lsw1, ok1 := splitDocID(y)
+	if !ok0 || !ok1 {
+		return x < y
 	}
-
-	msw0 := mustParse(string(x[0:16]))
-	lsw0 := mustParse(string(x[16:32]))
-	msw1 := mustParse(string(y[0:16]))
-	lsw1 := mustParse(string(y[16:32]))
-
 	if msw0 == msw1 {
 		return lsw0 < lsw1
 	}
 	return msw0 < msw1
+}
+
+// splitDocID parses the two 64-bit words of a DocID. ok is false when the
+// string is not exactly 32 lowercase-hex characters.
+func splitDocID(id DocID) (msw, lsw uint64, ok bool) {
+	s := string(id)
+	if len(s) != 32 {
+		return 0, 0, false
+	}
+	msw, err := strconv.ParseUint(s[0:16], 16, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	lsw, err = strconv.ParseUint(s[16:32], 16, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	return msw, lsw, true
 }
 
 // Document specifies the interface required by an object if it is to be indexed.

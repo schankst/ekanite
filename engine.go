@@ -58,6 +58,15 @@ func NewBatcher(e EventIndexer, sz int, dur time.Duration, max int) *Batcher {
 // Start starts the batching process.
 func (b *Batcher) Start(errChan chan<- error) error {
 	go func() {
+		// Last-resort guard: a panic in the batching loop must not crash the
+		// process (Issue #51). Recovery keeps ingestion alive; the failed
+		// batch is dropped and the next one continues.
+		defer func() {
+			if r := recover(); r != nil {
+				stats.Add("batcherPanicsRecovered", 1)
+				log.Printf("panic in batcher recovered: %v", r)
+			}
+		}()
 		batch := make([]*Event, 0, b.size)
 		timer := time.NewTimer(b.duration)
 		timer.Stop() // Stop any first firing.
@@ -348,9 +357,12 @@ func (e *Engine) Index(events []*Event) error {
 	for _, ev := range events {
 		index := e.indexForReferenceTime(ev.ReferenceTime())
 		if index == nil {
+			// Take a RWLock, check again, and create a new index if necessary.
+			// Doing this in a function makes lock management foolproof. An index
+			// creation failure is returned as a batch error instead of crashing
+			// the process (Issue #51).
+			var err error
 			func() {
-				// Take a RWLock, check again, and create a new index if necessary.
-				// Doing this in a function makes lock management foolproof.
 				e.mu.RUnlock()
 				defer e.mu.RLock()
 				e.mu.Lock()
@@ -358,13 +370,12 @@ func (e *Engine) Index(events []*Event) error {
 
 				index = e.indexForReferenceTime(ev.ReferenceTime())
 				if index == nil {
-					var err error
 					index, err = e.createIndexForReferenceTime(ev.ReferenceTime())
-					if err != nil || index == nil {
-						panic(fmt.Sprintf("failed to create index for %s: %s", ev.ReferenceTime(), err))
-					}
 				}
 			}()
+			if err != nil {
+				return fmt.Errorf("failed to create index for %s: %w", ev.ReferenceTime(), err)
+			}
 		}
 
 		if _, ok := subBatches[index]; !ok {
