@@ -32,18 +32,18 @@ deploy/
 
 ## 3. CI: `agent-gates.yml` (Gates)
 
-Jobs und ihre Zuordnung zu Gates:
+Jobs und ihre Zuordnung zu Gates (verbindliche Regeln: `docs/QUALITY-GATES.md`):
 
 | Job | Gate | Blockierend? | Anmerkung |
 |---|---|---|---|
-| `baseline` (fmt/vet/build/test/mod verify) | G0 | ✅ | ab W0 sofort aktiv |
-| `race` | G1 | ⚠️ `continue-on-error` bis MS2 | bekannt rot: bbolt checkptr (#3) |
-| `vuln` | G1 | ⚠️ `continue-on-error` bis SC-1 | `govulncheck` |
-| `lint` | G0/G2 | ⚠️ `continue-on-error` bis #84 | golangci-lint |
-| `coverage` | G2 | ✅ ab Implementierung (Baseline 50,9 %) | Gesamtwert darf nicht sinken |
+| `baseline` (fmt/vet/build/test/mod verify) | G0 | ✅ | seit W0 aktiv |
+| `race` | G1 | ✅ | seit #117 (bleve v1.0.14, bbolt 1.3.5) |
+| `vuln` | G1 | ⚠️ `continue-on-error: true` | `govulncheck`; Ausnahme bis #82 (Folge-Issue, s. Vertrag) |
+| `lint` | G0/G2 | ✅ | seit #116 (49 Findings behoben) |
+| `coverage` | G2 | ✅ | aktiv seit #39; Baseline 50,9 %, Artifact `coverage` |
 | `hygiene` | konstant | ✅ | alle offenen Issues haben Milestone |
 
-Begründung `continue-on-error`: Der Ist-Zustand ist rot (Race-Gate #3, vuln). Die Gates werden **sichtbar** geführt, blockieren aber erst nach Erreichen ihres Milestones (G1/G2). Das wird mit der Freischaltung in #39/#82 auf `continue-on-error: false` umgestellt.
+Alle blockierenden Gates sind als **required status checks** in der Branch-Protection von `master` registriert (G0, G1-race, G0/G2-lint, G2-coverage, Hygiene). Nur die dokumentierte Ausnahme (vuln, #82) läuft sichtbar ohne Blockade.
 
 ## 4. KI-Agenten — Empfehlung
 

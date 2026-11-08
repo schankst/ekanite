@@ -92,12 +92,15 @@ jobs:
           go test -coverprofile=/tmp/cov.out ./... > /dev/null
           total=$(go tool cover -func=/tmp/cov.out | awk '/^total:/{print $NF}' | tr -d '%')
           echo "coverage=${total}%"
-          # Baseline 50,9% (2026-11-07); Gate aktiv ab Implementierung (GO-6/#89)
-          if [ "$TOTAL_ANY" = "1" ]; then
-            awk -v t="$total" 'BEGIN{ if (t+0 < 50.9) { print "COVERAGE DROPPED", t; exit 1 } }'
-          fi
-        env:
-          TOTAL_ANY: "0"
+          # Gate aktiv seit #39 (Vertrag docs/QUALITY-GATES.md): Gesamtwert darf
+          # nicht unter die Baseline 50,9% (2026-11-07) sinken.
+          awk -v t="$total" 'BEGIN{ if (t+0 < 50.9) { print "COVERAGE DROPPED", t; exit 1 } }'
+      - name: Upload coverage artifact (PR-visible -cover diff)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: /tmp/cov.out
+          if-no-files-found: error
 
   hygiene:
     name: Gate — Issue/Milestone-Konsistenz
