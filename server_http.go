@@ -1,6 +1,7 @@
 package ekanite
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -16,6 +17,7 @@ type HTTPServer struct {
 	Searcher Searcher
 
 	addr     net.Addr
+	ln       net.Listener
 	template *template.Template
 
 	Logger *log.Logger
@@ -37,6 +39,7 @@ func (s *HTTPServer) Start() error {
 		return err
 	}
 
+	s.ln = ln
 	s.addr = ln.Addr()
 
 	s.template, err = template.New("ServerTemplate").Parse(templateSource)
@@ -47,9 +50,22 @@ func (s *HTTPServer) Start() error {
 
 	go func() {
 		if err := http.Serve(ln, s); err != nil {
-			s.Logger.Printf("http server error: %v", err)
+			// ErrServerClosed and net.ErrClosed are the normal return after
+			// Close() on shutdown (Issue #49), not failures worth logging.
+			if !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+				s.Logger.Printf("http server error: %v", err)
+			}
 		}
 	}()
+	return nil
+}
+
+// Close stops the HTTP server: the listener is closed, http.Serve returns.
+// Active requests are not forcibly cut, but no new ones are accepted (Issue #49).
+func (s *HTTPServer) Close() error {
+	if s.ln != nil {
+		return s.ln.Close()
+	}
 	return nil
 }
 

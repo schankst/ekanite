@@ -196,8 +196,9 @@ func main() {
 	log.Println("GOMAXPROCS set to", runtime.GOMAXPROCS(0))
 
 	// Start the expvar handler if requested.
+	var components closers
 	if *diagIface != "" {
-		startDiagServer(*diagIface)
+		components.diag = startDiagServer(*diagIface)
 	}
 
 	// Create and open the Engine.
@@ -223,12 +224,12 @@ func main() {
 
 	// Start the simple query server if requested.
 	if *queryIface != "" {
-		startQueryServer(*queryIface, engine)
+		components.query = startQueryServer(*queryIface, engine)
 	}
 
 	// Start the http query server if requested.
 	if *queryIfaceHttp != "" {
-		startHTTPQueryServer(*queryIfaceHttp, engine)
+		components.queryHTTP = startHTTPQueryServer(*queryIfaceHttp, engine)
 	}
 
 	// Create and start the batcher.
@@ -257,16 +258,20 @@ func main() {
 			log.Printf("TLS successfully configured (cert reload on SIGHUP)")
 		}
 
-		if err := startTCPCollector(*tcpIface, *inputFormat, *framing, tlsConfig, batcher); err != nil {
+		if tcpCol, err := startTCPCollector(*tcpIface, *inputFormat, *framing, tlsConfig, batcher); err != nil {
 			log.Fatalf("failed to start TCP collector: %s", err.Error())
+		} else {
+			components.collectors = append(components.collectors, tcpCol)
 		}
 		log.Printf("TCP collector listening to %s", *tcpIface)
 	}
 
 	// Start UDP collector if requested.
 	if *udpIface != "" {
-		if err := startUDPCollector(*udpIface, *inputFormat, batcher); err != nil {
+		if udpCol, err := startUDPCollector(*udpIface, *inputFormat, batcher); err != nil {
 			log.Fatalf("failed to start UDP collector: %s", err.Error())
+		} else {
+			components.collectors = append(components.collectors, udpCol)
 		}
 		log.Printf("UDP collector listening to %s", *udpIface)
 	}
@@ -281,36 +286,42 @@ func main() {
 	}
 	waitForSignals(reload)
 
+	// Ordered shutdown (Issue #49): stop accepting first (no new work), then
+	// flush and stop the batcher, then close the engine (waits for in-flight
+	// searches and retention), then stop profiling.
+	components.stop()
+	batcher.Stop()
 	engine.Close()
 
 	stopProfile()
+	log.Println("shutdown complete")
 }
 
-func startTCPCollector(iface, format, framing string, tls *tls.Config, batcher *ekanite.Batcher) error {
+func startTCPCollector(iface, format, framing string, tls *tls.Config, batcher *ekanite.Batcher) (input.Collector, error) {
 	collector, err := input.NewCollector("tcp", iface, format, framing, tls)
 	if err != nil {
-		return fmt.Errorf("failed to create TCP collector: %w", err)
+		return nil, fmt.Errorf("failed to create TCP collector: %w", err)
 	}
 	if err := collector.Start(batcher.C()); err != nil {
-		return fmt.Errorf("failed to start TCP collector: %w", err)
+		return nil, fmt.Errorf("failed to start TCP collector: %w", err)
 	}
 
-	return nil
+	return collector, nil
 }
 
-func startUDPCollector(iface, format string, batcher *ekanite.Batcher) error {
+func startUDPCollector(iface, format string, batcher *ekanite.Batcher) (input.Collector, error) {
 	collector, err := input.NewCollector("udp", iface, format, "", nil)
 	if err != nil {
-		return fmt.Errorf("failed to create UDP collector: %w", err)
+		return nil, fmt.Errorf("failed to create UDP collector: %w", err)
 	}
 	if err := collector.Start(batcher.C()); err != nil {
-		return fmt.Errorf("failed to start UDP collector: %w", err)
+		return nil, fmt.Errorf("failed to start UDP collector: %w", err)
 	}
 
-	return nil
+	return collector, nil
 }
 
-func startQueryServer(iface string, engine *ekanite.Engine) {
+func startQueryServer(iface string, engine *ekanite.Engine) *ekanite.Server {
 	server := ekanite.NewServer(iface, engine)
 	if server == nil {
 		log.Fatal("failed to create query server")
@@ -319,9 +330,10 @@ func startQueryServer(iface string, engine *ekanite.Engine) {
 		log.Fatalf("failed to start query server: %s", err.Error())
 	}
 	log.Printf("query server listening on %s", iface)
+	return server
 }
 
-func startHTTPQueryServer(iface string, engine *ekanite.Engine) {
+func startHTTPQueryServer(iface string, engine *ekanite.Engine) *ekanite.HTTPServer {
 	server := ekanite.NewHTTPServer(iface, engine)
 	if server == nil {
 		log.Fatal("failed to create HTTP query server")
@@ -330,9 +342,10 @@ func startHTTPQueryServer(iface string, engine *ekanite.Engine) {
 		log.Fatalf("failed to start HTTP query server: %s", err.Error())
 	}
 	log.Printf("HTTP query server listening on %s", iface)
+	return server
 }
 
-func startDiagServer(iface string) {
+func startDiagServer(iface string) *status.Service {
 	diagServer := status.NewService(iface)
 	diagServer.BuildInfo = map[string]any{
 		"version":    version,
@@ -343,6 +356,34 @@ func startDiagServer(iface string) {
 		log.Fatalf("failed to start status server on %s: %s", iface, err.Error())
 	}
 	log.Printf("diagnostic server listening on %s", iface)
+	return diagServer
+}
+
+// closers collects started components so shutdown can close them in order
+// (Issue #49). Close is idempotent per component.
+type closers struct {
+	collectors []input.Collector
+	diag       *status.Service
+	query      *ekanite.Server
+	queryHTTP  *ekanite.HTTPServer
+}
+
+// stop shuts down in dependency order: acceptors/listeners first so no new
+// work arrives, then nothing else — the batcher and engine are stopped by the
+// caller after this (see shutdown).
+func (c *closers) stop() {
+	if c.diag != nil {
+		c.diag.Close()
+	}
+	if c.queryHTTP != nil {
+		_ = c.queryHTTP.Close()
+	}
+	if c.query != nil {
+		_ = c.query.Close()
+	}
+	for _, col := range c.collectors {
+		_ = col.Close()
+	}
 }
 
 // certReloader holds the currently loaded TLS server certificate and swaps it

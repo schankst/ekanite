@@ -2,6 +2,7 @@ package status
 
 import (
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"log"
@@ -56,7 +57,9 @@ func (s *Service) Start() error {
 
 	go func() {
 		err := server.Serve(s.ln)
-		if err != nil {
+		// net.ErrClosed is the normal return after Close() on shutdown
+		// (Issue #49), not a failure worth logging.
+		if err != nil && !errors.Is(err, net.ErrClosed) {
 			s.logger.Println("HTTP service Serve() returned:", err.Error())
 		}
 	}()
