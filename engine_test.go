@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -542,7 +541,7 @@ func newEngine(path string, numShards int, indexDuration time.Duration) *Engine 
 
 // tempPath provides a path for temporary use.
 func tempPath() string {
-	f, _ := ioutil.TempFile("", "ekanite_")
+	f, _ := os.CreateTemp("", "ekanite_")
 	path := f.Name()
 	f.Close()
 	os.Remove(path)

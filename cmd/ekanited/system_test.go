@@ -2,7 +2,6 @@ package main_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -397,7 +396,7 @@ func NewBatcher(e *testEngine) *testBatcher {
 
 // tempPath provides a path for temporary use.
 func tempPath() string {
-	f, _ := ioutil.TempFile("", "ekanite_")
+	f, _ := os.CreateTemp("", "ekanite_")
 	path := f.Name()
 	f.Close()
 	os.Remove(path)
