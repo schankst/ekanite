@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 10
+    groups:
+      bleve-stack:
+        patterns:
+          - "github.com/blevesearch/*"
+          - "github.com/couchbase/vellum"
+          - "go.etcd.io/bbolt"
+      golang-x:
+        patterns:
+          - "golang.org/x/*"
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5

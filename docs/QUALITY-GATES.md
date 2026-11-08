@@ -10,8 +10,10 @@
 |---|---|---|
 | G0 | `gofmt -l .` leer · `go vet ./...` · `go build ./...` · `go test -count=1 ./...` · `go mod verify` | W0 (#106) |
 | G1 | `go test -race -count=1 ./...` | #117 (bleve v1.0.14) |
+| G1 | `govulncheck ./...` (0 aufgerufene Vulnerabilities) | #82 |
 | G0/G2 | golangci-lint (gofmt/govet/errcheck/staticcheck/gosimple/unused) | #116 |
 | G2 | Abdeckung nicht fallend (Gesamtwert ≥ Baseline, s. u.) | #39 |
+| SBOM | SBOM (`go version -m`) + sha256-Checksums als CI-Artifact `sbom` | #82 |
 | Hygiene | alle offenen Issues haben einen Milestone | #108 |
 
 **Erzwingung:** Alle blockierenden Gates sind als **required status checks** in der Branch-Protection von `master` registriert. Ein PR mit rotem Gate ist **nicht mergebar** — kein „Known-Failure-Schlupf" (Issue #3).
@@ -23,7 +25,9 @@ Ein blockierendes Gate darf **nur** rot sein, wenn:
 2. ein Folge-Issue den Fix terminiert **und**
 3. die Abweichung im PR-Kommentar begründet ist.
 
-Aktuell: **govulncheck** läuft sichtbar, aber `continue-on-error: true` bis #82 (Dependabot/govulncheck-Automation). Kein anderes Gate ist ausgenommen.
+Kein Gate ist aktuell ausgenommen; govulncheck blockiert seit #82. Bekannte, nicht aufgerufene Modul-Advisories (govulncheck meldet sie, `exit 0`):
+- **GO-2022-0470** (bleve QueryString): `Fixed: N/A` in bleve v1 — nur durch Bluge-Migration (#118) behebbar; Überwachung läuft, Migration ist geplant.
+- **GO-2026-5024** (x/sys, Windows-only): Fix v0.44.0 bräuchte Go ≥ 1.25; Ekanite läuft auf Linux (GOOS=windows nicht im Scope) und pinnt Go 1.24 (#85). Bei Go-Anhebung auf ≥ 1.25 automatisch beheben.
 
 ## Abdeckungs-Gate (G2)
 

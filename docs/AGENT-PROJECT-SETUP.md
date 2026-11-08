@@ -38,12 +38,13 @@ Jobs und ihre Zuordnung zu Gates (verbindliche Regeln: `docs/QUALITY-GATES.md`):
 |---|---|---|---|
 | `baseline` (fmt/vet/build/test/mod verify) | G0 | ✅ | seit W0 aktiv |
 | `race` | G1 | ✅ | seit #117 (bleve v1.0.14, bbolt 1.3.5) |
-| `vuln` | G1 | ⚠️ `continue-on-error: true` | `govulncheck`; Ausnahme bis #82 (Folge-Issue, s. Vertrag) |
+| `vuln` | G1 | ✅ | `govulncheck`; blockierend seit #82 (0 aufgerufene Vulns; 2 nicht-aufgerufene Ausnahmen s. Vertrag) |
 | `lint` | G0/G2 | ✅ | seit #116 (49 Findings behoben) |
 | `coverage` | G2 | ✅ | aktiv seit #39; Baseline 50,9 %, Artifact `coverage` |
+| `sbom` | SBOM | ✅ | `go version -m` + sha256 als Artifact `sbom` (#82) |
 | `hygiene` | konstant | ✅ | alle offenen Issues haben Milestone |
 
-Alle blockierenden Gates sind als **required status checks** in der Branch-Protection von `master` registriert (G0, G1-race, G0/G2-lint, G2-coverage, Hygiene). Nur die dokumentierte Ausnahme (vuln, #82) läuft sichtbar ohne Blockade.
+Alle blockierenden Gates sind als **required status checks** in der Branch-Protection von `master` registriert (G0, G1-race, G1-vuln, G0/G2-lint, G2-coverage, Hygiene). Keine Ausnahme aktiv; bekannte nicht-aufgerufene Advisories sind im Vertrag dokumentiert (#118 Bluge, x/sys Windows-only).
 
 ## 4. KI-Agenten — Empfehlung
 

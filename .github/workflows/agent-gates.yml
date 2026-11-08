@@ -53,7 +53,7 @@ jobs:
   vuln:
     name: Gate G1 — govulncheck
     needs: baseline
-    continue-on-error: true # aktiv nach SC-1 (#80/#82); wird in #82 auf false gestellt
+    continue-on-error: false # blockierend seit #82 (0 aufgerufene Vulns; Ausnahmen s. docs/QUALITY-GATES.md)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -115,3 +115,28 @@ jobs:
             --json number,milestone --jq '[.[] | select(.milestone == null)] | length')
           echo "issues without milestone: $missing"
           if [ "$missing" != "0" ]; then echo "Alle Issues müssen einem Milestone zugeordnet sein"; exit 1; fi
+
+  sbom:
+    name: Gate — SBOM & Checksums
+    needs: baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Build binary
+        run: go build -o /tmp/ekanited ./cmd/ekanited
+      - name: Generate SBOM (go version -m) + checksums
+        run: |
+          go version -m /tmp/ekanited > /tmp/sbom.txt
+          sha256sum /tmp/ekanited > /tmp/checksums.txt
+          echo "SBOM modules: $(grep -c 'mod' /tmp/sbom.txt)"
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            /tmp/sbom.txt
+            /tmp/checksums.txt
+          if-no-files-found: error
