@@ -43,7 +43,7 @@ var bsdMonths = map[string]time.Month{
 
 // Parse parses a raw RFC 3164 line into named fields. A non-matching line
 // leaves the result untouched (LogHandler then counts/forwards it unparsed).
-func (p *BSD) Parse(raw []byte, result *map[string]interface{}) {
+func (p *BSD) Parse(raw []byte, result *map[string]any) {
 	m := p.matcher.FindStringSubmatch(string(raw))
 	if m == nil {
 		p.add("bsdUnparsed", 1)
@@ -71,7 +71,7 @@ func (p *BSD) Parse(raw []byte, result *map[string]interface{}) {
 		pri, _ = strconv.Atoi(m[1])
 	}
 	// Build the result with the same key conventions as the RFC5424 parser.
-	out := map[string]interface{}{
+	out := map[string]any{
 		"timestamp": t,
 		"host":      m[7],
 		"app":       m[8],

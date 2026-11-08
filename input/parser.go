@@ -22,7 +22,7 @@ type StatsCollector func(key string, delta int64)
 
 // LogParser parses a raw log line into result fields.
 type LogParser interface {
-	Parse(raw []byte, result *map[string]interface{})
+	Parse(raw []byte, result *map[string]any)
 	Init()
 	// Stats wires the parser's internal counters (e.g. rfc5424Unparsed) into
 	// the input statistics map (Issue #35).
@@ -33,7 +33,7 @@ type LogParser interface {
 type LogHandler struct {
 	Fmt    string
 	Raw    []byte
-	Result map[string]interface{}
+	Result map[string]any
 	Parser LogParser
 	Stats  func(key string, delta int64)
 }
@@ -113,7 +113,7 @@ func warnUnparsed() {
 	}
 }
 func (p *LogHandler) Parse(b []byte) bool {
-	p.Result = map[string]interface{}{}
+	p.Result = map[string]any{}
 	p.Raw = b
 	p.Parser.Parse(p.Raw, &p.Result)
 	if len(p.Result) == 0 {

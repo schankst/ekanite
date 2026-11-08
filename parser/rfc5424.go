@@ -67,7 +67,7 @@ func (p *RFC5424) Init() {
 // It never overwrites an empty result on failure so callers can detect a failed
 // parse (len(*result) == 0). On success it always includes a "timestamp" key
 // (or nil if the field was NILVALUE "-").
-func (p *RFC5424) Parse(raw []byte, result *map[string]interface{}) {
+func (p *RFC5424) Parse(raw []byte, result *map[string]any) {
 	m := p.matcher.FindStringSubmatch(strings.TrimPrefix(string(raw), BOM))
 	if m == nil || len(m) != 9 {
 		p.add("rfc5424Unparsed", 1)
@@ -81,7 +81,7 @@ func (p *RFC5424) Parse(raw []byte, result *map[string]interface{}) {
 	}
 	ver, _ := strconv.Atoi(m[2])
 
-	var pid interface{}
+	var pid any
 	if m[6] != "-" {
 		if n, err := strconv.Atoi(m[6]); err == nil {
 			pid = n
@@ -92,7 +92,7 @@ func (p *RFC5424) Parse(raw []byte, result *map[string]interface{}) {
 		}
 	}
 
-	out := map[string]interface{}{
+	out := map[string]any{
 		"priority":   pri,
 		"facility":   pri / 8,
 		"severity":   pri % 8,
@@ -117,7 +117,7 @@ func (p *RFC5424) Parse(raw []byte, result *map[string]interface{}) {
 }
 
 // nilIfDash returns nil for the RFC5424 NILVALUE "-", otherwise the value.
-func nilIfDash(v string) interface{} {
+func nilIfDash(v string) any {
 	if v == "-" {
 		return nil
 	}
@@ -125,9 +125,9 @@ func nilIfDash(v string) interface{} {
 }
 
 // splitSD scans a leading RFC5424 structured-data sequence from rest and
-// returns the decoded structured data (a []map[string]interface{}, or nil if
+// returns the decoded structured data (a []map[string]any, or nil if
 // rest does not begin with an SD element) plus the remaining message.
-func (p *RFC5424) splitSD(rest string) (sd []map[string]interface{}, msg string) {
+func (p *RFC5424) splitSD(rest string) (sd []map[string]any, msg string) {
 	loc := p.sdEle.FindStringIndex(rest)
 	if loc == nil || loc[0] != 0 {
 		return nil, rest
@@ -143,11 +143,11 @@ func (p *RFC5424) splitSD(rest string) (sd []map[string]interface{}, msg string)
 		if ele == nil {
 			break
 		}
-		m := map[string]interface{}{}
+		m := map[string]any{}
 		for _, prm := range p.sdParam.FindAllStringSubmatch(ele[2], -1) {
 			m[prm[1]] = prm[2]
 		}
-		sd = append(sd, map[string]interface{}{ele[1]: m})
+		sd = append(sd, map[string]any{ele[1]: m})
 		pos += loc[1]
 	}
 	// After the last SD element an optional single space precedes the message.

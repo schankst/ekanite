@@ -62,7 +62,7 @@ func (c TransformConfig) dropRaw() bool {
 
 // anonymize applies the configured transformation to a single field value.
 // Unconfigured fields are returned unchanged.
-func (c TransformConfig) anonymize(field string, v interface{}) interface{} {
+func (c TransformConfig) anonymize(field string, v any) any {
 	if c.Anonymize == nil {
 		return v
 	}
@@ -117,8 +117,8 @@ func hmacHex(v string, key []byte) string {
 // search-result source when the raw line is dropped (DSGVO #95). The fallback
 // "raw" key (which carries the original unparsed line) is always excluded so
 // raw data never leaks through a minimized source view.
-func serializedFields(parsed map[string]interface{}) []byte {
-	out := make(map[string]interface{}, len(parsed))
+func serializedFields(parsed map[string]any) []byte {
+	out := make(map[string]any, len(parsed))
 	for k, v := range parsed {
 		if k == "raw" {
 			continue
