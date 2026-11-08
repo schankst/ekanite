@@ -519,7 +519,9 @@ func buildIndexMapping() (*mapping.IndexMappingImpl, error) {
 
 	simpleJustIndexed := bleve.NewTextFieldMapping()
 	simpleJustIndexed.Store = false
-	simpleJustIndexed.IncludeInAll = true // XXX Move to false when using AST
+	// Message field participates in the default "_all" for full-text search of
+	// the raw text; parsed fields use keyword maps with explicit IncludeInAll=false.
+	simpleJustIndexed.IncludeInAll = true
 	simpleJustIndexed.IncludeTermVectors = false
 
 	timeJustIndexed := bleve.NewDateTimeFieldMapping()
