@@ -334,7 +334,7 @@ func startHTTPQueryServer(iface string, engine *ekanite.Engine) {
 
 func startDiagServer(iface string) {
 	diagServer := status.NewService(iface)
-	diagServer.BuildInfo = map[string]interface{}{
+	diagServer.BuildInfo = map[string]any{
 		"version":    version,
 		"commit":     commit,
 		"go_version": runtime.Version(),

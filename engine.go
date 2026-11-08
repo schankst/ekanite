@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -173,7 +173,15 @@ func (e *Engine) Open() error {
 		}
 		log.Printf("engine opened index with %d shard(s) at %s", len(i.Shards), indexPath)
 		e.indexes = append(e.indexes, i)
-		sort.Sort(e.indexes)
+		slices.SortFunc(e.indexes, func(a, b *Index) int {
+			if sortIndex(a, b) {
+				return -1
+			}
+			if sortIndex(b, a) {
+				return 1
+			}
+			return 0
+		})
 	}
 
 	e.wg.Add(1)
@@ -304,7 +312,15 @@ func (e *Engine) createIndex(startTime, endTime time.Time) (*Index, error) {
 		return nil, err
 	}
 	e.indexes = append(e.indexes, i)
-	sort.Sort(e.indexes)
+	slices.SortFunc(e.indexes, func(a, b *Index) int {
+		if sortIndex(a, b) {
+			return -1
+		}
+		if sortIndex(b, a) {
+			return 1
+		}
+		return 0
+	})
 
 	e.Logger.Printf("index %s created with %d shards, start time: %s, end time: %s",
 		i.Path(), e.NumShards, i.StartTime(), i.EndTime())

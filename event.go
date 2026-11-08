@@ -31,9 +31,9 @@ func (e Event) ID() DocID {
 // With data minimization enabled (DSGVO #93/#95) the raw line is excluded and
 // configured fields are anonymized before indexing, so original values do not
 // appear in the index.
-func (e Event) Data() interface{} {
+func (e Event) Data() any {
 	cfg := transform()
-	doc := make(map[string]interface{}, len(e.Parsed)+4)
+	doc := make(map[string]any, len(e.Parsed)+4)
 	for k, v := range e.Parsed {
 		doc[k] = cfg.anonymize(k, v)
 	}
@@ -54,7 +54,7 @@ func (e Event) Data() interface{} {
 func (e Event) Source() []byte {
 	cfg := transform()
 	if cfg.dropRaw() {
-		anonymized := make(map[string]interface{}, len(e.Parsed)+1)
+		anonymized := make(map[string]any, len(e.Parsed)+1)
 		for k, v := range e.Parsed {
 			anonymized[k] = cfg.anonymize(k, v)
 		}

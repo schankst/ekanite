@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,15 +38,9 @@ type DocID string
 // DocIDs is a slice of DocIDs.
 type DocIDs []DocID
 
-// Len returns the number of DocIDs in the slice (sort.Interface).
-func (a DocIDs) Len() int { return len(a) }
-
-// Less reports whether the DocID at i sorts before the one at j, by the two
-// embedded 64-bit words (msw, then lsw). Maintains time/sequence ordering.
-func (a DocIDs) Less(i, j int) bool {
-	x := a[i]
-	y := a[j]
-
+// sortDocID reports whether x sorts before y, by the two embedded 64-bit words
+// (msw, then lsw). Maintains time/sequence ordering.
+func sortDocID(x, y DocID) bool {
 	mustParse := func(s string) uint64 {
 		w, err := strconv.ParseUint(s, 16, 64)
 		if err != nil {
@@ -65,13 +60,10 @@ func (a DocIDs) Less(i, j int) bool {
 	return msw0 < msw1
 }
 
-// Swap swaps two elements (sort.Interface).
-func (a DocIDs) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-
 // Document specifies the interface required by an object if it is to be indexed.
 type Document interface {
 	ID() DocID
-	Data() interface{}
+	Data() any
 	Source() []byte
 }
 
@@ -88,23 +80,15 @@ type Index struct {
 // Indexes is a slice of indexes.
 type Indexes []*Index
 
-// Indexes are ordered by decreasing end time.
-// If two indexes have the same end time, then order by decreasing start time.
-// This means that the first index in the slice covers the latest time range.
-// Len returns the number of indexes in the slice (sort.Interface).
-func (i Indexes) Len() int { return len(i) }
-
-// Less orders two indexes by decreasing end time (latest first), tie-broken
-// by decreasing start time.
-func (i Indexes) Less(u, v int) bool {
-	if i[u].endTime.After(i[v].endTime) {
+// sortIndex reports whether index u sorts before v. Indexes are ordered by
+// decreasing end time (latest first), tie-broken by decreasing start time, so
+// the first index in the slice covers the latest time range.
+func sortIndex(u, v *Index) bool {
+	if u.endTime.After(v.endTime) {
 		return true
 	}
-	return i[u].startTime.After(i[v].startTime)
+	return u.startTime.After(v.startTime)
 }
-
-// Swap swaps two elements (sort.Interface).
-func (i Indexes) Swap(u, v int) { i[u], i[v] = i[v], i[u] }
 
 // securePermissions restricts a created index tree to the owner only: every
 // directory is set 0700 and every file 0600. bleve/bbolt create files with
@@ -329,7 +313,15 @@ func (i *Index) Search(q string) (DocIDs, error) {
 	for _, d := range searchResults.Hits {
 		docIDs = append(docIDs, DocID(d.ID))
 	}
-	sort.Sort(docIDs)
+	slices.SortFunc(docIDs, func(a, b DocID) int {
+		if sortDocID(a, b) {
+			return -1
+		}
+		if sortDocID(b, a) {
+			return 1
+		}
+		return 0
+	})
 	return docIDs, nil
 }
 
@@ -491,7 +483,7 @@ func buildIndexMapping() (*mapping.IndexMappingImpl, error) {
 	// Create the index mapping, configure the analyzer, and set as default.
 	indexMapping := bleve.NewIndexMapping()
 	err = indexMapping.AddCustomTokenizer("ekanite_tk",
-		map[string]interface{}{
+		map[string]any{
 			"regexp": `[^\W_]+`,
 			"type":   regexp.Name,
 		})
@@ -500,11 +492,11 @@ func buildIndexMapping() (*mapping.IndexMappingImpl, error) {
 	}
 
 	err = indexMapping.AddCustomAnalyzer("ekanite",
-		map[string]interface{}{
+		map[string]any{
 			"type":          custom.Name,
-			"char_filters":  []interface{}{},
+			"char_filters":  []any{},
 			"tokenizer":     `ekanite_tk`,
-			"token_filters": []interface{}{`to_lower`},
+			"token_filters": []any{`to_lower`},
 		})
 	if err != nil {
 		return nil, err

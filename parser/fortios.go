@@ -28,7 +28,7 @@ func (p *FortiOS) add(key string, delta int64) {
 func (p *FortiOS) Init() {}
 
 // Parse parses a raw FortiOS line into named fields; returns nothing (result map).
-func (p *FortiOS) Parse(raw []byte, result *map[string]interface{}) {
+func (p *FortiOS) Parse(raw []byte, result *map[string]any) {
 	fields := parseFortiOSKV(string(raw))
 	if len(fields) == 0 {
 		p.add("fortiosUnparsed", 1)
@@ -41,7 +41,7 @@ func (p *FortiOS) Parse(raw []byte, result *map[string]interface{}) {
 		return
 	}
 
-	out := make(map[string]interface{}, len(fields)+4)
+	out := make(map[string]any, len(fields)+4)
 	for k, v := range fields {
 		out[k] = v
 	}

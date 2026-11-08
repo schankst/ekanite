@@ -16,7 +16,7 @@ import (
 
 // Provider is the interface status providers should implement.
 type Provider interface {
-	Status() (map[string]interface{}, error)
+	Status() (map[string]any, error)
 }
 
 // Service provides HTTP status service.
@@ -28,7 +28,7 @@ type Service struct {
 	providers map[string]Provider // Registered providers
 	mu        sync.Mutex
 
-	BuildInfo map[string]interface{}
+	BuildInfo map[string]any
 
 	logger *log.Logger
 }
@@ -109,7 +109,7 @@ func (s *Service) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	status := make(map[string]interface{})
+	status := make(map[string]any)
 	for k, p := range s.providers {
 		st, err := p.Status()
 		if err != nil {

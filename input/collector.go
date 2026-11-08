@@ -38,9 +38,9 @@ const (
 // fallback event so no message is silently lost (Issue #16). Such events carry
 // Parsed = {"raw": <line>, "unparsed": true} and a nil timestamp, so
 // ReferenceTime falls back to ReceptionTime.
-func newEvent(text string, parsed map[string]interface{}, source string) *Event {
+func newEvent(text string, parsed map[string]any, source string) *Event {
 	if parsed == nil {
-		parsed = map[string]interface{}{"raw": text, "unparsed": true}
+		parsed = map[string]any{"raw": text, "unparsed": true}
 	}
 	return &Event{
 		Text:          text,
@@ -177,7 +177,7 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 		// Log line available?
 		if match {
 			stats.Add("tcpEventsRx", 1)
-			var parsed map[string]interface{}
+			var parsed map[string]any
 			if parser.Parse(bytes.NewBufferString(log).Bytes()) {
 				parsed = parser.Result
 			}
@@ -218,7 +218,7 @@ func (s *UDPCollector) Start(c chan<- *Event) error {
 				continue
 			}
 			log := strings.Trim(string(buf[:n]), "\r\n")
-			var parsed map[string]interface{}
+			var parsed map[string]any
 			if parser.Parse(bytes.NewBufferString(log).Bytes()) {
 				parsed = parser.Result
 			}
