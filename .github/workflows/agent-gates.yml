@@ -9,6 +9,11 @@ permissions:
   contents: read
   issues: read
 
+# Deterministic, read-only module resolution (Issue #85): any drift in
+# go.mod/go.sum fails the build instead of silently mutating files.
+env:
+  GOFLAGS: -mod=readonly
+
 jobs:
   baseline:
     name: Gate G0 — fmt/vet/build/test
