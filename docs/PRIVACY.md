@@ -39,7 +39,7 @@ Stand: 2026-11-07. Dieses Dokument beschreibt, wie der Ekanite-Server (Fork `sch
 
 ## 7. Verschlüsselung
 
-- **Transport**: optional TLS/mTLS für den TCP-Eingang über `-tlspem`/`-tlskey` (aktuelle Flags; ECDSA/Chain-Reload siehe **#74**). UDP bleibt unverschlüsselt. Siehe auch README (TLS-Einschränkungen).
+- **Transport**: optional TLS für den TCP-Eingang über `-tlscert`/`-tlskey` (RFC 5425, RSA/ECDSA/Ed25519, SIGHUP-Reload; keine Client-Zertifikate). UDP bleibt unverschlüsselt. Siehe auch README (TLS).
 - **At rest**: Keine anwendungsseitige Verschlüsselung; Dateien liegen im Klartext (aber nur für den Owner lesbar, `0700`/`0600`, siehe §6). Entscheidung: Verschlüsselung auf Volume-Ebene (z. B. LUKS) wird empfohlen und ist als Betriebsentscheidung dokumentiert (**#90**); Backups siehe **OPS-5 (#70)**.
 
 ## 8. Backups

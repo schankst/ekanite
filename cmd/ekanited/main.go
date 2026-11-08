@@ -1,12 +1,9 @@
 package main
 
 import (
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	_ "net/http/pprof"
 	"os"
@@ -16,6 +13,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -90,10 +88,10 @@ func parseDurationFlag(s, name string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// SIGHUP-Reload (out of scope for Issue #65): uncritical runtime values such as
-// retention period and log level could become reloadable on SIGHUP in a follow-up
-// issue. Structural/startup flags (bind addresses, datadir, shard count, batch
-// sizing, TLS paths) are not reloadable without restart.
+// SIGHUP-Reload: TLS certificates are reloaded on SIGHUP (Issue #74). Further
+// uncritical runtime values (retention period, log level) could become
+// reloadable on SIGHUP in a follow-up issue; structural/startup flags (bind
+// addresses, datadir, shard count, batch sizing) stay restart-only.
 
 func versionString() string {
 	return fmt.Sprintf("ekanite %s (%s) %s", version, commit, runtime.Version())
@@ -112,8 +110,8 @@ func main() {
 		tcpIface        = fs.String("tcp", envOrString("tcp", DefaultTCPServer), "Syslog server TCP bind address in the form host:port. To disable set to empty string")
 		udpIface        = fs.String("udp", envOrString("udp", ""), "Syslog server UDP bind address in the form host:port. If not set, not started")
 		diagIface       = fs.String("diag", envOrString("diag", DefaultDiagsIface), "expvar and pprof bind address in the form host:port. If not set, not started")
-		caPemPath       = fs.String("tlspem", envOrString("tlspem", ""), "path to CA PEM file for TLS-enabled TCP server. If not set, TLS not activated")
-		caKeyPath       = fs.String("tlskey", envOrString("tlskey", ""), "path to CA key file for TLS-enabled TCP server. If not set, TLS not activated")
+		certPath        = fs.String("tlscert", envOrString("tlscert", ""), "path to TLS server certificate PEM file for TCP ingest (RFC 5425). If not set, TLS not activated")
+		certKeyPath     = fs.String("tlskey", envOrString("tlskey", ""), "path to TLS server private key file for TCP ingest (RSA/ECDSA/Ed25519). If not set, TLS not activated")
 		queryIface      = fs.String("query", envOrString("query", DefaultQueryAddr), "TCP Bind address for query server in the form host:port. To disable set to empty string")
 		queryIfaceHttp  = fs.String("queryhttp", envOrString("queryhttp", DefaultHTTPQueryAddr), "TCP Bind address for http query server in the form host:port. To disable set to empty string")
 		numShards       = fs.Int("numshards", envOrInt("numshards", DefaultNumShards), "Set number of shards per index")
@@ -248,14 +246,15 @@ func main() {
 	go drainLog("error indexing batch", errChan)
 
 	// Start TCP collector if requested.
+	var certReload *certReloader
 	if *tcpIface != "" {
 		var tlsConfig *tls.Config
-		if *caPemPath != "" && *caKeyPath != "" {
-			tlsConfig, err = newTLSConfig(*caPemPath, *caKeyPath)
+		if *certPath != "" && *certKeyPath != "" {
+			tlsConfig, certReload, err = newTLSConfig(*certPath, *certKeyPath)
 			if err != nil {
 				log.Fatalf("failed to configure TLS: %s", err.Error())
 			}
-			log.Printf("TLS successfully configured")
+			log.Printf("TLS successfully configured (cert reload on SIGHUP)")
 		}
 
 		if err := startTCPCollector(*tcpIface, *inputFormat, *framing, tlsConfig, batcher); err != nil {
@@ -275,8 +274,12 @@ func main() {
 	// Start profiling.
 	startProfile(*cpuProfile, *memProfile)
 
-	// Wait forever for signals.
-	waitForSignals()
+	// Wait for signals; SIGHUP reloads TLS certificates, SIGINT/SIGTERM shut down.
+	var reload func() error
+	if certReload != nil {
+		reload = certReload.Reload
+	}
+	waitForSignals(reload)
 
 	engine.Close()
 
@@ -342,43 +345,51 @@ func startDiagServer(iface string) {
 	log.Printf("diagnostic server listening on %s", iface)
 }
 
-func newTLSConfig(caPemPath, caKeyPath string) (*tls.Config, error) {
-	var config *tls.Config
+// certReloader holds the currently loaded TLS server certificate and swaps it
+// atomically on reload, so a running server serves rotated certificates without
+// restart (Issue #74).
+type certReloader struct {
+	mu       sync.RWMutex
+	certPath string
+	keyPath  string
+	cert     *tls.Certificate
+}
 
-	caPem, err := ioutil.ReadFile(caPemPath)
+// GetCertificate implements tls.Config.GetCertificate: it is called per
+// handshake, so a reload takes effect for new connections immediately.
+func (r *certReloader) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.cert, nil
+}
+
+// Reload re-reads the certificate and key files and swaps them in atomically.
+// On error the previously loaded certificate stays in effect.
+func (r *certReloader) Reload() error {
+	cert, err := tls.LoadX509KeyPair(r.certPath, r.keyPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	ca, err := x509.ParseCertificate(caPem)
-	if err != nil {
-		return nil, err
-	}
+	r.mu.Lock()
+	r.cert = &cert
+	r.mu.Unlock()
+	return nil
+}
 
-	caKey, err := ioutil.ReadFile(caKeyPath)
-	if err != nil {
-		return nil, err
+// newTLSConfig builds a server TLS config for the TCP ingest (RFC 5425) using
+// tls.LoadX509KeyPair, which supports RSA, ECDSA and Ed25519 keys plus full
+// certificate chains. TLS 1.2 is the minimum protocol version. No client
+// certificates are required — the sender authenticates on the network level.
+func newTLSConfig(certPath, keyPath string) (*tls.Config, *certReloader, error) {
+	reloader := &certReloader{certPath: certPath, keyPath: keyPath}
+	if err := reloader.Reload(); err != nil {
+		return nil, nil, err
 	}
-	key, err := x509.ParsePKCS1PrivateKey(caKey)
-	if err != nil {
-		return nil, err
+	config := &tls.Config{
+		GetCertificate: reloader.GetCertificate,
+		MinVersion:     tls.VersionTLS12,
 	}
-	pool := x509.NewCertPool()
-	pool.AddCert(ca)
-
-	cert := tls.Certificate{
-		Certificate: [][]byte{caPem},
-		PrivateKey:  key,
-	}
-
-	config = &tls.Config{
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		Certificates: []tls.Certificate{cert},
-		ClientCAs:    pool,
-	}
-
-	config.Rand = rand.Reader
-
-	return config, nil
+	return config, reloader, nil
 }
 
 // drainLog drains errors from the channel and simply logs them
@@ -390,15 +401,31 @@ func drainLog(msg string, errChan <-chan error) {
 	}
 }
 
-// waitForSignals blocks until a signal is received.
-func waitForSignals() {
+// waitForSignals handles runtime signals until shutdown: SIGHUP triggers a TLS
+// certificate reload (Issue #74), SIGINT/SIGTERM initiate shutdown. reload may
+// be nil when TLS is not configured.
+func waitForSignals(reload func() error) {
 	// Set up signal handling.
 	signalCh := make(chan os.Signal, 1)
-	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 
-	// Block until one of the signals above is received
-	<-signalCh
-	log.Println("signal received, shutting down...")
+	// Block until a shutdown signal is received; SIGHUP only reloads.
+	for sig := range signalCh {
+		if sig == syscall.SIGHUP {
+			if reload == nil {
+				log.Println("SIGHUP received, no TLS configured")
+				continue
+			}
+			if err := reload(); err != nil {
+				log.Printf("TLS reload failed: %s", err.Error())
+			} else {
+				log.Println("TLS certificates reloaded")
+			}
+			continue
+		}
+		log.Println("signal received, shutting down...")
+		return
+	}
 }
 
 // prof stores the file locations of active profiles.
@@ -484,9 +511,10 @@ Profiling:
   -cpuprof string       Where to write CPU profiling data. Not written if not set
   -memprof string       Where to write memory profiling data. Not written if not set
 
-TLS:
-  -tlspem string        path to CA PEM file for TLS-enabled TCP server. If not set, TLS not activated
-  -tlskey string        path to CA key file for TLS-enabled TCP server. If not set, TLS not activated
+TLS (TCP ingest, RFC 5425):
+  -tlscert string       path to TLS server certificate PEM file (chain supported). If not set, TLS not activated
+  -tlskey string        path to TLS server private key file (RSA/ECDSA/Ed25519). If not set, TLS not activated
+  SIGHUP reloads the certificates without restart.
 
 General:
   -version              Print version information and exit

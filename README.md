@@ -133,18 +133,18 @@ Die Browser-Oberfläche akzeptiert dieselben bleve-Queries. Standardmäßig ist 
 
 ![Data Diagram](img/eq.png)
 
-## TLS (TCP-Eingang)
+## TLS (TCP-Eingang, RFC 5425)
 
-Für den TCP-Collector kann mTLS aktiviert werden, wenn **beide** Flags gesetzt sind:
+Für den TCP-Collector kann TLS aktiviert werden, wenn **beide** Flags gesetzt sind:
 
-- `-tlspem`: Pfad zur PEM-Datei (Zertifikat/CA-Material, wie von der aktuellen Implementierung erwartet).
-- `-tlskey`: Pfad zur Schlüsseldatei.
+- `-tlscert`: Pfad zum TLS-Server-Zertifikat (PEM; volle Zertifikatskette unterstützt).
+- `-tlskey`: Pfad zum TLS-Server-Private-Key (RSA, ECDSA oder Ed25519).
 
-Wichtige Einschränkungen der aktuellen Implementierung (ehrlich/bestandsnah):
+Eigenschaften:
 
-- Es wird **Client-Authentifizierung erzwungen** (`RequireAndVerifyClientCert`, mTLS).
-- Der private Key wird als **PKCS#1-RSA** geparst (`ParsePKCS1PrivateKey`). Andere Key-Typen (z. B. ECDSA, PKCS#8/Ed25519, je nach Format) werden beim Start mit einem TLS-Konfigurationsfehler abgelehnt.
-- Es wird keine vollständige Zertifikatskette als separate Konfiguration aufgebaut; die PEM-Datei wird als einzelnes Zertifikat eingelesen und zusätzlich als Client-CA-Pool-Material verwendet.
+- Verschlüsselter Syslog-Transport (RFC 5425); **keine** Client-Zertifikate erforderlich — Sender authentifizieren sich auf Netzwerkebene (Firewall/IP-Whitelist).
+- **SIGHUP lädt die Zertifikate neu** (Rotationsbetrieb ohne Neustart): Dateien ersetzen, dann `kill -HUP <pid>`. Bei einem Fehler bleibt das zuletzt geladene Zertifikat in Kraft.
+- Mindest-Protokoll: TLS 1.2.
 
 TLS gilt nur für den TCP-Eingang. UDP bleibt unverschlüsselt.
 
@@ -154,7 +154,7 @@ Basic statistics and diagnostics are available (expvar/pprof). Visit `http://loc
 ## Skalierung auf einer Maschine (Tuning)
 
 Konfiguration erfolgt über CLI-Flags oder Umgebungsvariablen `EKANITE_<FLAGNAME>` (Flag-Name in Großbuchstaben, z. B. `EKANITE_BATCHSIZE`). Vorrang: **explizites CLI-Flag überschreibt die Env-Var** (das Flag setzt den effektiven Wert; ohne Flag gilt der Env-Default, ohne Env der kompilierte Default). `-version` hat keine Env-Var.  
-SIGHUP-Reload ist **nicht** implementiert (Folge-Thema): perspektivisch reloadbar wären nur unkritische Werte (Retention, Log-Level); Struktur-/Startup-Parameter (Bind-Adressen, `-datadir`, `-numshards`, Batch-Größen, TLS-Pfade) erfordern einen Neustart.
+SIGHUP-Reload lädt die **TLS-Zertifikate** neu (Rotationsbetrieb, #74); Struktur-/Startup-Parameter (Bind-Adressen, `-datadir`, `-numshards`, Batch-Größen, TLS-Pfade) erfordern einen Neustart.
 
 | Parameter (Flag / Env) | Wirkt auf | Metrik (Verweis #54/#58/#59) | Empfohlener Bereich / Hinweis |
 |---|---|---|---|
@@ -170,8 +170,8 @@ SIGHUP-Reload ist **nicht** implementiert (Folge-Thema): perspektivisch reloadba
 | `-queryhttp` / `EKANITE_QUERYHTTP` | HTTP-Query-Bind (leer = aus) | Query-Latenz/Fehler (#54/#58) | Standard `localhost:8080`; **nicht unauthentifiziert exponieren**. |
 | `-diag` / `EKANITE_DIAG` | Diagnostics/pprof-Bind (leer = aus) | Runtime-/pprof-Metriken (#54/#58) | Nur intern erreichbar machen; exponiertes pprof ist ein Sicherheitsrisiko. |
 | `-input` / `EKANITE_INPUT` | Eingabeformat (`syslog`, `fortios`) | Parse-Fehler/-Rate (#54/#58) | Passend zum Sender wählen. |
-| `-tlspem` / `EKANITE_TLSPEM` | TLS-Zertifikat/PEM für TCP-Ingest (mTLS, mit `-tlskey`) | TLS-Handshake/Fehler (#54/#58) | Beide setzen oder beide leer; Key-Format-Einschränkungen siehe TLS-Abschnitt. |
-| `-tlskey` / `EKANITE_TLSKEY` | TLS-Private-Key für TCP-Ingest (mTLS, mit `-tlspem`) | TLS-Handshake/Fehler (#54/#58) | Datei-Rechte härten; beide setzen oder beide leer. |
+| `-tlscert` / `EKANITE_TLSCERT` | TLS-Server-Zertifikat für TCP-Ingest (mit `-tlskey`) | TLS-Handshake/Fehler (#54/#58) | Beide setzen oder beide leer; SIGHUP lädt neu (#74). |
+| `-tlskey` / `EKANITE_TLSKEY` | TLS-Server-Private-Key für TCP-Ingest (RSA/ECDSA/Ed25519) | TLS-Handshake/Fehler (#54/#58) | Datei-Rechte härten (0600); beide setzen oder beide leer. |
 | `-cpuprof` / `EKANITE_CPUPROF` | Pfad für CPU-Profil (Diagnose) | Profil-Ausgabe (ad hoc) | Nur temporär zur Analyse aktivieren. |
 | `-memprof` / `EKANITE_MEMPROF` | Pfad für Heap-Profil (Diagnose) | Profil-Ausgabe (ad hoc) | Nur temporär zur Analyse aktivieren. |
 
