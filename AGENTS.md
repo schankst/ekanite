@@ -15,3 +15,7 @@ Fünf kanonische Triage-Rollen, Label = Rolle: `needs-triage`, `needs-info`, `re
 ### Domain docs
 
 Single-context: ein `GLOSSARY.md` am Root + `docs/adr/`. Aktuell noch keine vorhanden — werden von `/domain-modeling` lazy angelegt. Siehe `docs/agents/domain.md`.
+
+### Lagebild
+
+Statusübersicht des Projekts lebt in `docs/LAGEBILD.md` (lebend, wird ersetzt, nicht angereichert). Bei „Lagebild“/„Statusübersicht“-Anfragen den Skill `lagebild` nutzen — Schema und Erzeugung siehe `~/.agents/skills/lagebild/SKILL.md`.
