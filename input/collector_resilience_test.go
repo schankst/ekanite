@@ -28,8 +28,8 @@ func TestTCPCollector_ParserError_KeepsServing(t *testing.T) {
 	// Write a line so the handler reads something; then it should hit the
 	// parser-error path and return.
 	go func() {
-		client.Write([]byte("hello\n"))
-		client.Close()
+		_, _ = client.Write([]byte("hello\n"))
+		_ = client.Close()
 	}()
 
 	select {
