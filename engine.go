@@ -82,13 +82,21 @@ func (b *Batcher) Start(errChan chan<- error) error {
 		send := func() {
 			err := b.indexer.Index(batch)
 			if err != nil {
+				// Reset the batch even on failure so a persistent index error
+				// (e.g. disk full) cannot grow this slice without bound
+				// (Issue #46). The failed events are dropped; the error is
+				// surfaced on errChan so it is not silently swallowed (#7).
 				stats.Add("batchIndexedError", 1)
+				batch = make([]*Event, 0, b.size)
+				if errChan != nil {
+					errChan <- err
+				}
 				return
 			}
 			stats.Add("batchIndexed", 1)
 			stats.Add("eventsIndexed", int64(len(batch)))
 			if errChan != nil {
-				errChan <- err
+				errChan <- nil
 			}
 			batch = make([]*Event, 0, b.size)
 		}

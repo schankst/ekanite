@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"expvar"
 	"io"
 	"log"
 	"os"
@@ -779,5 +780,68 @@ func TestEngine_IndexCreateError(t *testing.T) {
 	// The process (this test) must still be alive and usable.
 	if len(e.indexes) != 0 {
 		t.Fatalf("engine should not have created any index, got %d", len(e.indexes))
+	}
+}
+
+// failingIndexer always returns an error and records how many batches it saw
+// and their sizes — used to prove a persistent index error does not grow the
+// batcher's internal slice without bound (Issue #46).
+type failingIndexer struct {
+	calls   int
+	maxSize int
+}
+
+func (f *failingIndexer) Index(b []*Event) error {
+	f.calls++
+	if len(b) > f.maxSize {
+		f.maxSize = len(b)
+	}
+	return errors.New("simulated index failure")
+}
+
+// TestBatcher_IndexErrorNoLeak verifies Issue #46: a persistent index error
+// must not accumulate events in an ever-growing batch slice. Each new batch
+// must stay at (or below) the configured size, the error channel must carry
+// the real error, and the error counter must rise.
+func TestBatcher_IndexErrorNoLeak(t *testing.T) {
+	i := &failingIndexer{}
+	b := NewBatcher(i, 2, time.Hour, 0)
+
+	c := make(chan error, 100) // Buffered: errors are read below.
+	if err := b.Start(c); err != nil {
+		t.Fatalf("failed start batcher: %s", err.Error())
+	}
+
+	// Send well past several batch boundaries; the handler must keep
+	// consuming events (not block on a growing slice).
+	for n := 0; n < 6; n++ {
+		b.C() <- newInputEvent("", time.Now())
+	}
+
+	// Read the three errors first: consuming errChan synchronizes with the
+	// batcher's send() calls, so the indexer counters below are settled.
+	errs := 0
+	for errs < 3 {
+		select {
+		case err := <-c:
+			if err == nil {
+				t.Fatalf("error channel delivered nil, want simulated index failure")
+			}
+			errs++
+		case <-time.After(3 * time.Second):
+			t.Fatalf("error channel blocked: batch handler stopped consuming (leak?)")
+		}
+	}
+
+	// Three batches of size 2 should have been attempted, each failing.
+	if i.calls < 3 {
+		t.Fatalf("indexer saw %d batches, want >= 3 (batch not reset on error)", i.calls)
+	}
+	if i.maxSize > 2 {
+		t.Fatalf("indexer saw a batch of size %d, want <= 2 (slice grew: leak)", i.maxSize)
+	}
+	// Counter must reflect the failures.
+	if got := stats.Get("batchIndexedError").(*expvar.Int).Value(); got < 3 {
+		t.Fatalf("batchIndexedError = %d, want >= 3", got)
 	}
 }
