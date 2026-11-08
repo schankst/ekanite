@@ -1,0 +1,53 @@
+# GoReleaser release pipeline (Issue #138).
+# Builds archived binaries with checksums + SBOM and publishes a GHCR image.
+# Triggers from .github/workflows/release.yml on v* tags.
+version: 2
+
+project_name: ekanite
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+
+builds:
+  - id: ekanited
+    main: ./cmd/ekanited
+    binary: ekanited
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.CommitDate}}
+
+archives:
+  - formats:
+      - tar.gz
+      - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+# Software Bill of Materials per release (Issue #82/#138): produced from the
+# build module graph by the release workflow (see .github/workflows/release.yml),
+# alongside checksums. GoReleaser's built-in `sboms` varies by version, so the
+# SBOM is generated explicitly per artifact to stay portable across runners.
+
+release:
+  github:
+    owner: schankst
+    name: ekanite
+  name_template: "v{{.Version}}"
+

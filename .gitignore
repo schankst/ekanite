@@ -30,3 +30,6 @@ _testmain.go
 
 *.swp
 /ekanited
+
+# GoReleaser build output (Issue #138)
+dist/
