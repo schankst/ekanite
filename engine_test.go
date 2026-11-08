@@ -756,3 +756,28 @@ func TestIndex_FailedShardOpenWrapped(t *testing.T) {
 		t.Errorf("OpenIndex error should wrap *os.PathError, got %T: %v", err, err)
 	}
 }
+
+// TestEngine_IndexCreateError verifies Issue #51: an index-creation failure
+// during Index() is returned as a batch error instead of panicking (which
+// would crash the whole process).
+func TestEngine_IndexCreateError(t *testing.T) {
+	dataDir := tempPath()
+	defer os.RemoveAll(dataDir)
+
+	e := NewEngine(dataDir)
+	if err := e.Open(); err != nil {
+		t.Fatalf("failed to open engine: %s", err.Error())
+	}
+	// Force index creation to fail (shard count above the maximum).
+	e.NumShards = maxShardCount + 1
+
+	ev := newIndexableEvent("panic? no, error", parseTime("1982-02-05T04:43:00Z"))
+	err := e.Index([]*Event{ev})
+	if err == nil {
+		t.Fatal("expected an error from Index() with uncreatable index, got nil")
+	}
+	// The process (this test) must still be alive and usable.
+	if len(e.indexes) != 0 {
+		t.Fatalf("engine should not have created any index, got %d", len(e.indexes))
+	}
+}

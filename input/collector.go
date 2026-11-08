@@ -7,6 +7,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -140,10 +141,24 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 		stats.Add("tcpConnections", -1)
 		conn.Close()
 	}()
+	// Last-resort guard: a panic inside this goroutine must not crash the whole
+	// process (Issue #51). Recovery keeps the collector serving other
+	// connections; the failure is counted and logged.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("panic in TCP connection handler recovered: %v", r)
+			stats.Add("tcpPanicsRecovered", 1)
+		}
+	}()
 
 	parser, err := NewParser(s.format)
 	if err != nil {
-		panic(fmt.Sprintf("failed to create TCP connection parser:%s", err.Error()))
+		// Parser configuration is validated at collector start; a failure here is
+		// unexpected but must not crash the process (Issue #51). Drop this
+		// connection and let the collector keep serving others.
+		log.Printf("failed to create TCP connection parser: %s", err.Error())
+		stats.Add("tcpParserErrors", 1)
+		return
 	}
 
 	delimiter := newFrameDelimiter(s.framing, msgBufSize)
@@ -200,10 +215,18 @@ func (s *UDPCollector) Start(c chan<- *Event) error {
 
 	parser, err := NewParser(s.format)
 	if err != nil {
-		panic(fmt.Sprintf("failed to create UDP parser:%s", err.Error()))
+		return fmt.Errorf("failed to create UDP parser: %w", err)
 	}
 
 	go func() {
+		// Last-resort guard: a panic in the UDP read loop must not crash the
+		// process (Issue #51). Recovery keeps the collector reading.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("panic in UDP collector recovered: %v", r)
+				stats.Add("udpPanicsRecovered", 1)
+			}
+		}()
 		buf := make([]byte, udpReadBufSize)
 		for {
 			n, addr, err := conn.ReadFromUDP(buf)
