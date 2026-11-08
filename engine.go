@@ -41,7 +41,8 @@ type Batcher struct {
 	size     int
 	duration time.Duration
 
-	c chan *input.Event
+	c    chan *input.Event
+	done chan struct{}
 }
 
 // NewBatcher returns a Batcher for EventIndexer e, a batching size of sz, a maximum duration
@@ -52,7 +53,14 @@ func NewBatcher(e EventIndexer, sz int, dur time.Duration, max int) *Batcher {
 		size:     sz,
 		duration: dur,
 		c:        make(chan *input.Event, max),
+		done:     make(chan struct{}),
 	}
+}
+
+// Stop signals the batching loop to stop. The current partial batch is
+// flushed before the loop exits, so no buffered events are lost (Issue #49).
+func (b *Batcher) Stop() {
+	close(b.done)
 }
 
 // Start starts the batching process.
@@ -102,6 +110,13 @@ func (b *Batcher) Start(errChan chan<- error) error {
 			case <-timer.C:
 				stats.Add("batchTimeout", 1)
 				send()
+			case <-b.done:
+				// Ordered shutdown (Issue #49): flush whatever is pending,
+				// then exit so the engine can be closed cleanly.
+				if len(batch) > 0 {
+					send()
+				}
+				return
 			}
 		}
 	}()
@@ -135,9 +150,10 @@ type Engine struct {
 	mu      sync.RWMutex
 	indexes Indexes
 
-	open bool
-	done chan struct{}
-	wg   sync.WaitGroup
+	open     bool
+	done     chan struct{}
+	wg       sync.WaitGroup
+	searchWG sync.WaitGroup
 
 	Logger *log.Logger
 }
@@ -200,20 +216,24 @@ func (e *Engine) Open() error {
 	return nil
 }
 
-// Close closes the engine.
+// Close closes the engine in an ordered manner (Issue #49): first the done
+// channel signals in-flight searches and the retention loop to stop, then it
+// waits for both before closing the underlying indexes — so no goroutine
+// touches a closed index.
 func (e *Engine) Close() error {
 	if !e.open {
 		return nil
 	}
+
+	close(e.done)
+	e.wg.Wait()
+	e.searchWG.Wait()
 
 	for _, i := range e.indexes {
 		if err := i.Close(); err != nil {
 			return err
 		}
 	}
-
-	close(e.done)
-	e.wg.Wait()
 
 	e.open = false
 	return nil
@@ -412,10 +432,20 @@ func (e *Engine) Search(query string) (<-chan string, error) {
 	// Buffer channel to control how many docs are sent back.
 	c := make(chan string, 1)
 
+	e.searchWG.Add(1)
 	go func() {
+		defer e.searchWG.Done()
 		// Sequentially search each index, starting with the earliest in time.
 		// This could be done in parallel but more sorting would be required.
 		for i := len(e.indexes) - 1; i >= 0; i-- {
+			// Abort on shutdown so a search cannot keep the process alive
+			// or race with index close (Issue #49/#13).
+			select {
+			case <-e.done:
+				close(c)
+				return
+			default:
+			}
 			e.Logger.Printf("searching index %s", e.indexes[i].Path())
 			ids, err := e.indexes[i].Search(query)
 			if err != nil {
@@ -429,7 +459,12 @@ func (e *Engine) Search(query string) (<-chan string, error) {
 					break
 				}
 				stats.Add("docsIDsRetrieved", 1)
-				c <- string(b) // There is excessive byte-slice-to-strings here.
+				select {
+				case c <- string(b): // There is excessive byte-slice-to-strings here.
+				case <-e.done:
+					close(c)
+					return
+				}
 			}
 		}
 		close(c)

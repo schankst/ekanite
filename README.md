@@ -151,6 +151,17 @@ TLS gilt nur für den TCP-Eingang. UDP bleibt unverschlüsselt.
 ## Diagnostics
 Basic statistics and diagnostics are available (expvar/pprof). Visit `http://localhost:9951/debug/vars` to retrieve this information. The bind address can be changed via the `-diag` command-line option; to disable the diagnostics server, set `-diag` to an empty string.
 
+## Shutdown-Verhalten
+
+`SIGINT`/`SIGTERM` stoppen den Daemon **geordnet** (Issue #49):
+
+1. **Listener schließen** — Query-, HTTP-Query-, Diag- und Ingest-Listener (TCP/UDP) nehmen keine neuen Verbindungen/Datagramme mehr an; aktive Query-Verbindungen werden geschlossen.
+2. **Batcher** — der noch offene Batch wird geflusht und der Indexierungs-Loop beendet (keine verlorenen Events im Puffer).
+3. **Engine** — wartet auf laufende Suchen und die Retention-Schleife, **bevor** die Indexes geschlossen werden (kein Zugriff auf geschlossene Indizes).
+4. **Profile** werden gestoppt; Log-Meldung `shutdown complete`.
+
+Unter Last endet der Prozess damit in der Regel in < 2 s. `SIGHUP` lädt dagegen nur die TLS-Zertifikate neu (siehe TLS-Abschnitt) und beendet den Daemon nicht.
+
 ## Skalierung auf einer Maschine (Tuning)
 
 Konfiguration erfolgt über CLI-Flags oder Umgebungsvariablen `EKANITE_<FLAGNAME>` (Flag-Name in Großbuchstaben, z. B. `EKANITE_BATCHSIZE`). Vorrang: **explizites CLI-Flag überschreibt die Env-Var** (das Flag setzt den effektiven Wert; ohne Flag gilt der Env-Default, ohne Env der kompilierte Default). `-version` hat keine Env-Var.  

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -56,6 +57,8 @@ func newEvent(text string, parsed map[string]any, source string) *Event {
 type Collector interface {
 	Start(chan<- *Event) error
 	Addr() net.Addr
+	// Close stops the collector so its accept/read loop returns (Issue #49).
+	Close() error
 }
 
 // TCPCollector represents a network collector that accepts and handler TCP connections.
@@ -65,6 +68,7 @@ type TCPCollector struct {
 	framing string
 
 	addr      net.Addr
+	ln        net.Listener
 	tlsConfig *tls.Config
 }
 
@@ -72,6 +76,7 @@ type TCPCollector struct {
 type UDPCollector struct {
 	format string
 	addr   *net.UDPAddr
+	conn   *net.UDPConn
 }
 
 // NewCollector returns a network collector of the specified type, that will bind
@@ -116,17 +121,31 @@ func (s *TCPCollector) Start(c chan<- *Event) error {
 	if err != nil {
 		return err
 	}
+	s.ln = ln
 	s.addr = ln.Addr()
 
 	go func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
+				// Listener closed (shutdown, Issue #49) or transient failure.
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
 				continue
 			}
 			go s.handleConnection(conn, c)
 		}
 	}()
+	return nil
+}
+
+// Close closes the TCP listener; the accept loop returns and active
+// connections drain naturally (Issue #49).
+func (s *TCPCollector) Close() error {
+	if s.ln != nil {
+		return s.ln.Close()
+	}
 	return nil
 }
 
@@ -212,6 +231,7 @@ func (s *UDPCollector) Start(c chan<- *Event) error {
 	if err != nil {
 		return err
 	}
+	s.conn = conn
 
 	parser, err := NewParser(s.format)
 	if err != nil {
@@ -232,6 +252,10 @@ func (s *UDPCollector) Start(c chan<- *Event) error {
 			n, addr, err := conn.ReadFromUDP(buf)
 			stats.Add("udpBytesRead", int64(n))
 			if err != nil {
+				// Connection closed (shutdown, Issue #49) or transient failure.
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
 				continue
 			}
 			if n > msgBufSize {
@@ -249,6 +273,14 @@ func (s *UDPCollector) Start(c chan<- *Event) error {
 			stats.Add("udpEventsRx", 1)
 		}
 	}()
+	return nil
+}
+
+// Close closes the UDP socket; the read loop returns (Issue #49).
+func (s *UDPCollector) Close() error {
+	if s.conn != nil {
+		return s.conn.Close()
+	}
 	return nil
 }
 
