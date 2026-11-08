@@ -3,6 +3,7 @@ package ekanite
 import (
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -437,4 +438,31 @@ func TestShard_Index(t *testing.T) {
 	}
 
 	s.Close()
+}
+
+// TestIndex_NewIndex_AlreadyExists verifies Issue #8: NewIndex on a start time
+// whose index directory already exists must return an error (previously the
+// existence check was unfulfillable, so the endtime metadata was silently
+// overwritten).
+func TestIndex_NewIndex_AlreadyExists(t *testing.T) {
+	path := tempPath()
+	defer os.RemoveAll(path)
+
+	start := parseTime("2006-01-02T22:04:00Z").UTC()
+	end := start.Add(time.Hour)
+
+	i, err := NewIndex(path, start, end, 2)
+	if err != nil {
+		t.Fatalf("failed to create first index: %s", err.Error())
+	}
+	defer i.Close()
+
+	// Second index with the same start time must fail.
+	_, err = NewIndex(path, start, end, 2)
+	if err == nil {
+		t.Fatal("expected error for duplicate index start time, got nil")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("unexpected error for duplicate index: %s", err.Error())
+	}
 }

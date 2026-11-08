@@ -129,11 +129,18 @@ func NewIndex(path string, startTime, endTime time.Time, numShards int) (*Index,
 		return nil, fmt.Errorf("requested shard count exceeds maximum of %d", maxShardCount)
 	}
 
-	// Create the directory for the index, if it doesn't already exist.
-	if _, err := os.Stat(indexPath); err == nil && os.IsNotExist(err) {
-		return nil, fmt.Errorf("index already exists at %s", indexPath)
+	// Ensure the data directory exists, then create the index directory
+	// atomically: os.Mkdir fails with EEXIST if an index for this start time
+	// already exists. This both fixes the previously unfulfillable existence
+	// check (err == nil && os.IsNotExist(err) could never be true) and prevents
+	// silently overwriting an existing index's endtime metadata (Issue #8).
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return nil, err
 	}
-	if err := os.MkdirAll(indexPath, 0700); err != nil {
+	if err := os.Mkdir(indexPath, 0700); err != nil {
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("index already exists at %s", indexPath)
+		}
 		return nil, err
 	}
 
