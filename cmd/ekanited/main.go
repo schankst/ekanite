@@ -134,8 +134,9 @@ func main() {
 
 	// Restrict file creation to the owner only (Issue #90): datadir, index
 	// shards and audit log must not be world-readable. Combined with explicit
-	// 0700/0600 modes this enforces owner-only access to stored logs.
-	syscall.Umask(0077)
+	// 0700/0600 modes this enforces owner-only access to stored logs. Windows
+	// has no process umask; a no-op there (guarded by build tag, #138).
+	restrictFileCreation()
 
 	if *showVersion {
 		fmt.Println(versionString())
