@@ -19,7 +19,7 @@ jobs:
     name: Gate G0 — fmt/vet/build/test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
@@ -43,7 +43,7 @@ jobs:
     continue-on-error: false # grün seit Issue #2/#3 (bleve v1.0.14, bbolt 1.3.5; Parser-Stats-Race gefixt)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
@@ -56,7 +56,7 @@ jobs:
     continue-on-error: false # blockierend seit #82 (0 aufgerufene Vulns; Ausnahmen s. docs/QUALITY-GATES.md)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
@@ -69,7 +69,7 @@ jobs:
     continue-on-error: false # blockierend seit GO-1 (#84); Lint ist grün
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
@@ -83,7 +83,7 @@ jobs:
     needs: baseline
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
@@ -106,7 +106,7 @@ jobs:
     name: Gate — Issue/Milestone-Konsistenz
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check open issues have milestone
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -121,7 +121,7 @@ jobs:
     needs: baseline
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
