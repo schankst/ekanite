@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -844,4 +845,43 @@ func TestBatcher_IndexErrorNoLeak(t *testing.T) {
 	if got := stats.Get("batchIndexedError").(*expvar.Int).Value(); got < 3 {
 		t.Fatalf("batchIndexedError = %d, want >= 3", got)
 	}
+}
+
+// TestEngine_SearchConcurrentRetention verifies Issue #13: search and retention
+// enforcement running concurrently must not race on e.indexes or use an index
+// that retention is closing. Meaningful under -race.
+func TestEngine_SearchConcurrentRetention(t *testing.T) {
+	dataDir := tempPath()
+	defer os.RemoveAll(dataDir)
+
+	e := NewEngine(dataDir)
+	if err := e.Open(); err != nil {
+		t.Fatalf("failed to open engine: %s", err.Error())
+	}
+	defer e.Close()
+	e.RetentionPeriod = 0 // every index expires immediately
+
+	ev := newIndexableEvent("concurrent search retention", time.Now())
+	if err := e.Index([]*Event{ev}); err != nil {
+		t.Fatalf("failed to index event: %s", err.Error())
+	}
+
+	var wg sync.WaitGroup
+	for n := 0; n < 40; n++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			c, err := e.Search("concurrent")
+			if err != nil {
+				return
+			}
+			for range c {
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			e.enforceRetention()
+		}()
+	}
+	wg.Wait()
 }
