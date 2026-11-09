@@ -11,12 +11,23 @@
 | G0 | `gofmt -l .` leer · `go vet ./...` · `go build ./...` · `go test -count=1 ./...` · `go mod verify` | W0 (#106) |
 | G1 | `go test -race -count=1 ./...` | #117 (bleve v1.0.14) |
 | G1 | `govulncheck ./...` (0 aufgerufene Vulnerabilities) | #82 |
-| G0/G2 | golangci-lint (gofmt/govet/errcheck/staticcheck/gosimple/unused) | #116 |
+| G0/G2 | golangci-lint v2 (gofmt-govet/errcheck/staticcheck/unused; gosimple ⊂ staticcheck) | #116 |
 | G2 | Abdeckung nicht fallend (Gesamtwert ≥ Baseline, s. u.) | #39 |
 | SBOM | SBOM (`go version -m`) + sha256-Checksums als CI-Artifact `sbom` | #82 |
 | Hygiene | alle offenen Issues haben einen Milestone | #108 |
 
 **Erzwingung:** Alle blockierenden Gates sind als **required status checks** in der Branch-Protection von `master` registriert. Ein PR mit rotem Gate ist **nicht mergebar** — kein „Known-Failure-Schlupf" (Issue #3).
+
+## Tool- und Action-Versionen (Pinning)
+
+Die Gate-Toolchain wird **gepinnt**, damit ein Upstream-Release nicht unangekündigt ein Gate bricht (Issue #142; ausgelöst durch #125/#126):
+
+- **GitHub-Actions**: Major-Pin (`@vN`), gepflegt via Dependabot (`.github/dependabot.yml`).
+- **golangci-lint**: Tool-Version fest im Workflow (`version: v2.15.0`), nicht `latest` → kein Sprung auf ein inkompatibles Major/Schema.
+- **Go**: `go 1.24` + `toolchain go1.24.0` (Issue #85).
+- **govulncheck**: läuft derzeit noch als `@latest` (Auto-Toolchain). **Pinning ist gekoppelt an eine Go-Anhebung (#129):** ein fester (`@latest`-freier) Lauf scannt die Stdlib der gepinnten Go-Version. Mit Go 1.24 meldet govulncheck **27 Stdlib-Advisories** (html/template, net/http, crypto/tls/x509, …; Fixes in Go 1.25.x, teils nur 1.26.x) — d. h. die gepinnte Go-Version ist nicht stdlib-vulnerabilitätsfrei. Sobald Go ≥ 1.25/1.26 gesetzt ist (#129), wird govulncheck auf eine feste Version gepinnt.
+
+Beim Anheben einer gepinnten Version: lokal ausführen, Schema-/Verhaltensänderungen prüfen, erst dann den Pin aktualisieren.
 
 ## Ausnahme-Regel
 

@@ -1,22 +1,46 @@
-# golangci-lint configuration — Issue #84 (GO-1)
-# Recommended linter set: gofmt, govet, errcheck, staticcheck, gosimple, unused.
-linters:
-  enable:
-    - gofmt
-    - govet
-    - errcheck
-    - staticcheck
-    - gosimple
-    - unused
-  disable-all: true
-  fast: false
-
-issues:
-  # The codebase predates these linters; after #84 all findings are fixed and
-  # the lint gate becomes blocking. New code must stay lint-clean.
-  max-same-issues: 0
-  max-issues-per-linter: 0
+# golangci-lint configuration — Issue #84 (GO-1); v2-Schema seit Issue #142.
+#
+# Linter-Set: govet, errcheck, staticcheck, unused (+ gofmt als Formatter).
+# In golangci-lint v2 ist "gosimple" Teil von "staticcheck", und Formatierungs-
+# linter (gofmt) liegen unter "formatters". Das Schema wurde mit
+# "golangci-lint migrate" aus der v1-Datei erzeugt; die exclusions.presets
+# materialisieren die v1-Default-Exclusions (u. a. std-error-handling), damit
+# sich das Gate verhaltensgleich verhält.
+version: "2"
 
 run:
-  timeout: 3m
   tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  # New code must stay lint-clean; the gate is blocking.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

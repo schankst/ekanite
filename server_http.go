@@ -78,7 +78,8 @@ func (s *HTTPServer) Addr() net.Addr {
 func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	dontCache(w, r)
 
-	if r.Method == "GET" || r.Method == "HEAD" {
+	switch r.Method {
+	case "GET", "HEAD":
 		// HEAD is conveniently supported by net/http without further action
 		err := serveIndex(s, w, r)
 
@@ -87,7 +88,7 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error executing template: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-	} else if r.Method == "POST" {
+	case "POST":
 		err := r.ParseForm()
 		if err != nil {
 			s.Logger.Printf("Error parsing form '%s'", err)
@@ -137,7 +138,7 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.Logger.Print("Error executing template: ", err)
 		}
 
-	} else {
+	default:
 		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
 	}
 }
