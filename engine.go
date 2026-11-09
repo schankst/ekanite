@@ -433,8 +433,11 @@ func (e *Engine) Index(events []*Event) error {
 
 // Search performs a search.
 func (e *Engine) Search(query string) (<-chan string, error) {
+	// Hold the engine read lock for the whole search, released by the goroutine
+	// when it finishes (Issue #13). Retention enforcement takes the write lock
+	// before deleting indexes, so this prevents it from closing an index while
+	// the search still uses it. Concurrent searches share the read lock.
 	e.mu.RLock()
-	defer e.mu.RUnlock()
 	stats.Add("queriesRx", 1)
 
 	// Buffer channel to control how many docs are sent back.
@@ -443,6 +446,7 @@ func (e *Engine) Search(query string) (<-chan string, error) {
 	e.searchWG.Add(1)
 	go func() {
 		defer e.searchWG.Done()
+		defer e.mu.RUnlock()
 		// Sequentially search each index, starting with the earliest in time.
 		// This could be done in parallel but more sorting would be required.
 		for i := len(e.indexes) - 1; i >= 0; i-- {

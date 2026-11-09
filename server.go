@@ -123,6 +123,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 			for s := range c {
 				if _, werr := conn.Write([]byte(s + "\n")); werr != nil {
 					conn.Close()
+					// Drain any remaining results so the search goroutine can
+					// finish and release the engine lock (Issue #13); otherwise
+					// an abandoned search would block retention enforcement.
+					for range c {
+					}
 					return
 				}
 			}
