@@ -48,4 +48,4 @@ Ziel: Nachweis, dass ein Restore funktioniert (erster Ernstfall ≠ erster Test)
 ## Abgrenzung
 
 - Kein Online-Backup, keine integrierte Backup-Automation in Ekanite.
-- Für Upgrades: Dienst stoppen → Binary/Container ersetzen → starten; Datadir bleibt erhalten (siehe README „Deployment“). Vor größeren Upgrades zusätzlich konsistentes Backup gemäß diesem Runbook erstellen.
+- Für Upgrades: Dienst stoppen → Binary/Container ersetzen → starten; Datadir bleibt erhalten (siehe README §Betrieb). Vor größeren Upgrades zusätzlich konsistentes Backup gemäß diesem Runbook erstellen.
