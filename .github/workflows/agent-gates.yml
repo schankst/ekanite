@@ -96,7 +96,7 @@ jobs:
           # nicht unter die Baseline 50,9% (2026-11-07) sinken.
           awk -v t="$total" 'BEGIN{ if (t+0 < 50.9) { print "COVERAGE DROPPED", t; exit 1 } }'
       - name: Upload coverage artifact (PR-visible -cover diff)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: /tmp/cov.out
@@ -133,7 +133,7 @@ jobs:
           sha256sum /tmp/ekanited > /tmp/checksums.txt
           echo "SBOM modules: $(grep -c 'mod' /tmp/sbom.txt)"
       - name: Upload SBOM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: |
