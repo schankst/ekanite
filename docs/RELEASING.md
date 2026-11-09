@@ -44,7 +44,7 @@ Dieses Dokument beschreibt, wie ein Release des Forks erstellt und verifiziert w
 
 ## Datadir-Kompatibilität
 
-Für ein Upgrade die Datadir-Kompatibilität der Zielversion prüfen (README §Deployment, `docs/OPERATIONS.md`): Dienst stoppen → Binary/Image ersetzen → starten. Das Datadir bleibt erhalten.
+Für ein Upgrade die Datadir-Kompatibilität der Zielversion prüfen (README §Betrieb, `docs/OPERATIONS.md`): Dienst stoppen → Binary/Image ersetzen → starten. Das Datadir bleibt erhalten.
 
 ## Hinweise
 
