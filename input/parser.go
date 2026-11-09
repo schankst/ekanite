@@ -2,7 +2,7 @@ package input
 
 import (
 	"fmt"
-	"github.com/ekanite/ekanite/parser"
+	"github.com/schankst/ekanite/parser"
 	"log"
 	"sync/atomic"
 	"time"
