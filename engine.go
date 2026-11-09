@@ -331,7 +331,7 @@ func (e *Engine) createIndex(startTime, endTime time.Time) (*Index, error) {
 	// start time, use that index's end time as the start time.
 	var idx *Index
 	for _, i := range e.indexes {
-		if i.startTime == startTime {
+		if i.startTime.Equal(startTime) {
 			idx = i
 			break
 		}

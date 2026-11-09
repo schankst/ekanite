@@ -164,7 +164,9 @@ func TestBatcher_AllModes(t *testing.T) {
 	}
 
 	for n := 0; n < 3; n++ {
-		<-c
+		if err := <-c; err != nil {
+			t.Fatalf("batch returned error: %s", err.Error())
+		}
 	}
 
 	if i.BatchesRx != 3 || i.EventsRx != 8 {
