@@ -17,9 +17,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ekanite/ekanite"
-	"github.com/ekanite/ekanite/input"
-	"github.com/ekanite/ekanite/status"
+	"github.com/schankst/ekanite"
+	"github.com/schankst/ekanite/input"
+	"github.com/schankst/ekanite/status"
 )
 
 var (

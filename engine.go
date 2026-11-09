@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ekanite/ekanite/input"
+	"github.com/schankst/ekanite/input"
 )
 
 // Engine defaults

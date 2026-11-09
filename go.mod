@@ -1,4 +1,4 @@
-module github.com/ekanite/ekanite
+module github.com/schankst/ekanite
 
 go 1.24
 

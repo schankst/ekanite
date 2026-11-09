@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ekanite/ekanite"
-	"github.com/ekanite/ekanite/input"
+	"github.com/schankst/ekanite"
+	"github.com/schankst/ekanite/input"
 )
 
 // testSystem represents a single end-to-end system.

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ekanite/ekanite/input"
+	"github.com/schankst/ekanite/input"
 )
 
 // TestEvent_New tests simple Event creation.

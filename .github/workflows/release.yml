@@ -61,7 +61,7 @@ jobs:
       - name: Generate SBOM
         run: |
           {
-            echo "module: github.com/ekanite/ekanite"
+            echo "module: github.com/schankst/ekanite"
             echo "release: ${GITHUB_REF_NAME}"
             echo "commit: ${GITHUB_SHA::12}"
             go list -m all

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ekanite/ekanite/input"
+	"github.com/schankst/ekanite/input"
 )
 
 type TestIndexer struct {
