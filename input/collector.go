@@ -2,7 +2,6 @@ package input
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/tls"
 	"errors"
 	"expvar"
@@ -51,6 +50,19 @@ func newEvent(text string, parsed map[string]any, source string) *Event {
 		Sequence:      atomic.AddInt64(&sequenceNumber, 1),
 		SourceIP:      source,
 	}
+}
+
+// parsedEvent parses one framed log line and builds the event to forward. The
+// parser's raw bytes are the input line, so the event text is the line itself;
+// a failed parse still yields an event (raw/unparsed fallback, Issue #16).
+// Shared by the TCP and UDP collectors so parse+construct lives in one place
+// (Issue #5).
+func parsedEvent(parser *LogHandler, line, source string) *Event {
+	var parsed map[string]any
+	if parser.Parse([]byte(line)) {
+		parsed = parser.Result
+	}
+	return newEvent(line, parsed, source)
 }
 
 // Collector specifies the interface all network collectors must implement.
@@ -211,11 +223,7 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 		// Log line available?
 		if match {
 			stats.Add("tcpEventsRx", 1)
-			var parsed map[string]any
-			if parser.Parse(bytes.NewBufferString(log).Bytes()) {
-				parsed = parser.Result
-			}
-			c <- newEvent(string(parser.Raw), parsed, conn.RemoteAddr().String())
+			c <- parsedEvent(parser, log, conn.RemoteAddr().String())
 		}
 
 		// Was the connection closed?
@@ -265,11 +273,7 @@ func (s *UDPCollector) Start(c chan<- *Event) error {
 				continue
 			}
 			log := strings.Trim(string(buf[:n]), "\r\n")
-			var parsed map[string]any
-			if parser.Parse(bytes.NewBufferString(log).Bytes()) {
-				parsed = parser.Result
-			}
-			c <- newEvent(log, parsed, addr.String())
+			c <- parsedEvent(parser, log, addr.String())
 			stats.Add("udpEventsRx", 1)
 		}
 	}()

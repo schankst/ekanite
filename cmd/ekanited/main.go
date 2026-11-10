@@ -132,7 +132,7 @@ func main() {
 			log.Printf("TLS successfully configured (cert reload on SIGHUP)")
 		}
 
-		if tcpCol, err := startTCPCollector(cfg.TCPIface, cfg.InputFormat, cfg.Framing, tlsConfig, batcher); err != nil {
+		if tcpCol, err := startCollector("tcp", cfg.TCPIface, cfg.InputFormat, cfg.Framing, tlsConfig, batcher); err != nil {
 			log.Fatalf("failed to start TCP collector: %s", err.Error())
 		} else {
 			components.collectors = append(components.collectors, tcpCol)
@@ -142,7 +142,7 @@ func main() {
 
 	// Start UDP collector if requested.
 	if cfg.UDPIface != "" {
-		if udpCol, err := startUDPCollector(cfg.UDPIface, cfg.InputFormat, batcher); err != nil {
+		if udpCol, err := startCollector("udp", cfg.UDPIface, cfg.InputFormat, "", nil, batcher); err != nil {
 			log.Fatalf("failed to start UDP collector: %s", err.Error())
 		} else {
 			components.collectors = append(components.collectors, udpCol)
