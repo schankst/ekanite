@@ -1,6 +1,6 @@
 # Building
 
-*Building Ekanite requires Go 1.24 or later (see `go.mod` / project toolchain).*
+*Building Ekanite requires Go 1.26 or later (see `go.mod` / project toolchain).*
 
 ```bash
 go build ./...

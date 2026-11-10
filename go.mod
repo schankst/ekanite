@@ -1,8 +1,8 @@
 module github.com/schankst/ekanite
 
-go 1.24
+go 1.26.0
 
-toolchain go1.24.0
+toolchain go1.26.10
 
 require github.com/blevesearch/bleve v1.0.14
 
@@ -27,5 +27,5 @@ require (
 	github.com/tinylib/msgp v1.1.0 // indirect
 	github.com/willf/bitset v1.1.10 // indirect
 	go.etcd.io/bbolt v1.3.5 // indirect
-	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 )

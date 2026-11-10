@@ -24,8 +24,8 @@ Die Gate-Toolchain wird **gepinnt**, damit ein Upstream-Release nicht unangekün
 
 - **GitHub-Actions**: Major-Pin (`@vN`), gepflegt via Dependabot (`.github/dependabot.yml`).
 - **golangci-lint**: Tool-Version fest im Workflow (`version: v2.15.0`), nicht `latest` → kein Sprung auf ein inkompatibles Major/Schema.
-- **Go**: `go 1.24` + `toolchain go1.24.0` (Issue #85).
-- **govulncheck**: läuft derzeit noch als `@latest` (Auto-Toolchain). **Pinning ist gekoppelt an eine Go-Anhebung (#129):** ein fester (`@latest`-freier) Lauf scannt die Stdlib der gepinnten Go-Version. Mit Go 1.24 meldet govulncheck **27 Stdlib-Advisories** (html/template, net/http, crypto/tls/x509, …; Fixes in Go 1.25.x, teils nur 1.26.x) — d. h. die gepinnte Go-Version ist nicht stdlib-vulnerabilitätsfrei. Sobald Go ≥ 1.25/1.26 gesetzt ist (#129), wird govulncheck auf eine feste Version gepinnt.
+- **Go**: `go 1.26` + `toolchain go1.26.10` (Issue #129; zuvor #85 mit 1.24). Der Sprung war nötig, weil ein gepinnter govulncheck-Lauf die Stdlib der gepinnten Go-Version scannt und Go 1.24 **27 Stdlib-Advisories** aufwies (Fixes erst in Go 1.25.x/1.26.x).
+- **govulncheck**: feste Version (`golang.org/x/vuln/cmd/govulncheck@v1.9.0`), nicht `@latest` → läuft unter dem gepinnten Go 1.26 und scannt dessen Stdlib; kein Auto-Toolchain-Download.
 
 Beim Anheben einer gepinnten Version: lokal ausführen, Schema-/Verhaltensänderungen prüfen, erst dann den Pin aktualisieren.
 
@@ -38,7 +38,7 @@ Ein blockierendes Gate darf **nur** rot sein, wenn:
 
 Kein Gate ist aktuell ausgenommen; govulncheck blockiert seit #82. Bekannte, nicht aufgerufene Modul-Advisories (govulncheck meldet sie, `exit 0`):
 - **GO-2022-0470** (bleve QueryString): `Fixed: N/A` in bleve v1 — nur durch Bluge-Migration (#118) behebbar; Überwachung läuft, Migration ist geplant.
-- **GO-2026-5024** (x/sys, Windows-only): Fix v0.44.0 bräuchte Go ≥ 1.25; Ekanite läuft auf Linux (GOOS=windows nicht im Scope) und pinnt Go 1.24 (#85). Bei Go-Anhebung auf ≥ 1.25 automatisch beheben.
+- *(GO-2026-5024/x-sys ist mit dem Go-1.26-Sprung und x/sys v0.50.0 entfallen — nicht mehr gemeldet.)*
 
 ## Abdeckungs-Gate (G2)
 

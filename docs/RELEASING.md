@@ -34,7 +34,7 @@ Dieses Dokument beschreibt, wie ein Release des Forks erstellt und verifiziert w
 - **Binär-Version**:
   ```bash
   ./ekanited -version
-  # -> ekanite v1.4.0 (<short-commit>) go1.24.x
+  # -> ekanite v1.4.0 (<short-commit>) go1.26.x
   ```
 - **Image pullbar**:
   ```bash
