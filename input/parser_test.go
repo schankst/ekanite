@@ -279,13 +279,3 @@ func Test_Parsing(t *testing.T) {
 		}
 	}
 }
-
-func Benchmark_Parsing(b *testing.B) {
-	p, _ := NewParser("syslog")
-	for n := 0; n < b.N; n++ {
-		ok := p.Parse(bytes.NewBufferString(`<134>0 2015-05-05T21:20:00.493320+00:00 fisher apache-access - - 173.247.206.174 - - [05/May/2015:21:19:52 +0000] "GET /2013/11/ HTTP/1.1" 200 22056 "http://www.philipotoole.com/" "Wget/1.15 (linux-gnu)"`).Bytes())
-		if !ok {
-			panic("message failed to parse during benchmarking")
-		}
-	}
-}
