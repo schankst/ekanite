@@ -7,7 +7,7 @@ import (
 )
 
 func Test_Formats(t *testing.T) {
-	var p *LogHandler
+	var p *Parser
 	mismatched := func(rtrnd string, intnd string, intndA string) {
 		if intndA != "" {
 			t.Fatalf("Parser format %v does not match the intended format %v.\n", rtrnd, intnd)

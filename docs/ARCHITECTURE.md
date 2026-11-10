@@ -10,7 +10,7 @@ Ekanite ist ein Syslog-Index-/Suchdienst in Go ohne externe Laufzeitabhängigkei
 | Komponente | Rolle |
 |---|---|
 | **Eingang (Collector)** | Nimmt Zeilen über TCP/UDP (optional TLS für TCP) entgegen (`input.Collector`, `input.NewCollector`). |
-| **Parser/Delimiter** | Trennt Nachrichten (Syslog-Delimiter) und parst Formate `syslog`/RFC5424 oder `fortios` (`input.LogHandler`/`NewParser`, `parser.RFC5424`, `parser.FortiOS`). |
+| **Parser/Delimiter** | Trennt Nachrichten (Syslog-Delimiter) und parst Formate `syslog`/RFC5424 oder `fortios` (`input.Parser`/`NewParser`, `parser.RFC5424`, `parser.FortiOS`). |
 | **Ingest/Batching** | Puffert Eingangsereignisse und bündelt sie zu Index-Batches (`ekanite.Batcher`, `NewBatcher`, `Start`, `C`). |
 | **Index (Engine/Index/Shard)** | Schreibt Batches zeitbereichsbezogen in bleve-Shards (`Engine`, `Index`, `Shard`, `Event`). |
 | **Retention** | Entfernt abgelaufene Zeit-Indizes periodisch (`Engine.runRetentionEnforcement`/`enforceRetention`, `Index.Expired`, `DeleteIndex`). |
@@ -20,7 +20,7 @@ Ekanite ist ein Syslog-Index-/Suchdienst in Go ohne externe Laufzeitabhängigkei
 
 ```mermaid
 flowchart LR
-  C["Collector TCP/UDP/TLS<br/>(input.NewCollector → Start)"] --> P["Parser/Delimiter<br/>(SyslogDelimiter, LogHandler.Parse)"]
+  C["Collector TCP/UDP/TLS<br/>(input.NewCollector → Start)"] --> P["Parser/Delimiter<br/>(SyslogDelimiter, Parser.Parse)"]
   P -->|input.Event + ReceptionTime/Sequence/SourceIP| BC["Batcher.C() chan *input.Event<br/>(gepuffert: maxpending)"]
   BC --> B["Batcher (size/timeout)<br/>send → indexer.Index"]
   B --> E["Engine.Index([]*Event)<br/>Demux nach Zeit-Index"]
@@ -77,18 +77,18 @@ flowchart LR
 
 - **TCP** (`server.go`, `NewServer`/`Start`): Pro Verbindung werden Zeilen gelesen (CR/LF getrimmt), leere Zeilen ignoriert. Jede Query wird an `Searcher.Search` delegiert; Treffer (`string` pro Dokumentquelle) werden zeilenweise geschrieben, Fehler als Text in die Verbindung. Abschluss einer Query-Antwort: zwei Zeilenumbrüche (`\n\n`). Keine Authentifizierung im Code.
 - **HTTP** (`server_http.go`, `NewHTTPServer`/`Start`): `GET`/`HEAD` liefert UI; `POST` mit Formularfeld `query` führt Suche aus, sammelt **alle** Treffer in einen Slice und rendert HTML (inkl. Trefferanzahl/Dauer). Leere Query fällt auf Index zurück. Fehler → HTTP 500/400. Keine Authentifizierung im Code.
-- **Query-Sprache (effektiv):** `Index.Search` baut `bleve.NewQueryStringQuery(q)` und sucht über den Shard-Alias (`searchRequest.Size = maxSearchHitSize` 10000). Die UI verweist auf die bleve-Query-String-Syntax. Das Paket `query/` implementiert einen eigenen Parser/AST (`query.NewParser`/`Parse`, Field/Binary/Paren-Ausdrücke) — **dieser wird im aktuellen Suchpfad nicht verwendet** (separater Codepfad/tote Umschaltlogik, siehe #32).
+- **Query-Sprache (effektiv):** `Index.Search` baut `bleve.NewQueryStringQuery(q)` und sucht über den Shard-Alias (`searchRequest.Size = maxSearchHitSize` 10000). Die UI verweist auf die bleve-Query-String-Syntax. Das frühere `query/`-Paket wurde entfernt (#32); die Abfragesprache ist ausschließlich bleve Query String.
 - **Fehler-/Leerfälle:** Bleve-Suchfehler brechen den Engine-Scan ab (Log + `break`). Dokument-Fetch-Fehler pro ID werden geloggt und brechen den aktuellen Index-Lauf ab. `[INFERENCE]` Max. 10000 Treffer pro Index-Suchrequest (`maxSearchHitSize`); größere Treffermengen werden durch bleve/Request-Limit begrenzt.
 
 ## 6. Bekannte Grenzen & Risiken
 
-- **#32 – tote/abweichende Query-Logik:** `query/`-Paket (eigener Parser) ist nicht in den aktiven Suchpfad (`Engine`/`Index` → `bleve.NewQueryStringQuery`) integriert; Suchsemantik folgt bleve, nicht dem `query/`-AST.
-- **#13 – Lock-Race/Lock-Muster:** Manuelles `RUnlock`/`Lock`/`Unlock`/`RLock` in `Engine.Index` beim Nach-Anlegen von Zeit-Indizes (Race-Fenster/Komplexität).
-- **#14 / #52 – keine Authentifizierung:** TCP- und HTTP-Query-Endpunkte sowie (je nach Deployment) Diag-Bindung sind im Code nicht authentifiziert.
+- **#32 – Query-Logik:** erledigt — das tote `query/`-Paket wurde entfernt; die Suchsemantik folgt ausschließlich bleve Query String.
+- **#13 – Lock-Muster:** behoben — `Engine.Search` hält den Read-Lock für die Suchdauer, `Close` wartet auf laufende Suchen (#49). Das manuelle `RUnlock`/`Lock`/`Unlock`/`RLock` bleibt nur im seltenen Nach-Anlegen von Zeit-Indizes in `Engine.Index`.
+- **#52 / #78 – keine Authentifizierung:** TCP- und HTTP-Query-Endpunkte sowie (je nach Deployment) Diag-Bindung sind im Code nicht authentifiziert.
 - **Exponiertes pprof/expvar:** Bei aktiviertem `-diag` bedient `status.Service` `/debug/vars` und `/debug/pprof/*` (`status/service.go`); `main` importiert zudem `_ "net/http/pprof"`.
 - **Datenschutz:** Siehe `docs/PRIVACY.md` (Logdaten, Betriebs-/Zugriffsaspekte); Query/Diag-Exposition beachten.
-- **Batch-Fehlerpfad:** `Batcher.send` setzt das Batch bei Indexfehler nicht zurück (siehe 4.4) — Risiko von Duplikaten/Stehenbleiben. `[RISIKO]`
-- **Index-Mapping vs. `Event.Data`:** `buildIndexMapping` definiert u. a. `ReferenceTime`/`ReceptionTime`, `Event.Data()` liefert nur `Message` (`event.go`) — diese Zeitfelder werden aus `Data()` nicht befüllt. `[INFERENCE]` Zeitfilterung/Suche über diese Mapping-Felder ist daher aus dem Codepfad nicht zugesichert.
+- **Batch-Fehlerpfad:** behoben (#46/#7) — `Batcher.send` setzt das Batch auch im Fehlerfall zurück und meldet den Fehler auf `errChan` (kein unbegrenztes Wachstum, sichtbarer Fehler).
+- **Index-Mapping vs. `Event.Data`:** behoben (#34) — `Event.Data()` liefert das Dokument mit allen geparsten Feldern (inkl. `source_ip` und Zeiten); ganze Werte (IPs/Hosts/app) nutzen den Keyword-Analyzer.
 - **Retention-Minimum:** „Minimum 24h“ nicht erzwungen (siehe 4.5).
 
 ## 7. Review-Checkliste (C1, MS6-Änderungen)
@@ -100,8 +100,8 @@ Bei Änderungen an Ingest/Index/Query dieses Dokument und die folgenden Punkte g
 3. **DocID/Zeitnormalisierung:** `Event.ID()` (msw = `ReferenceTime().UnixNano()`, lsw = `Sequence`), `ReferenceTime()`-Fallbacks und Parser-`timestamp`-Format (RFC3339-Erwartung) konsistent; kein ungeguardeter Panic-Pfad eingeführt/verschärft.
 4. **Batch-Flush & Fehlerbehandlung:** `Batcher`-Trigger (`batchsize`/`batchtime`/`maxpending`), Reset/`errChan`-Verhalten bei Erfolg/Fehler, und Durabilitätsannahmen explizit.
 5. **Retention:** `Expired`-Definition (`endTime + RetentionPeriod < now`), Check-Intervall, Löschpfad unter Lock, und ob ein Minimum durchgesetzt werden soll/muss (Code vs. Doku/Flag).
-6. **Suchpfad & Reihenfolge:** Index-Iterationsrichtung, `DocIDs`-Sortierung, `bleve.NewQueryStringQuery` vs. `query/`-Paket (#32) — keine unbeabsichtigte Semantikänderung der Query-Sprache/Ergebnisordnung.
-7. **Sicherheits-/Betriebsoberfläche:** Auth-Status der Query-Endpunkte (#14/#52) und pprof/expvar-Exposition (`-diag`) bei Änderungen mitdokumentiert; Verweis auf `docs/PRIVACY.md` aktuell.
+6. **Suchpfad & Reihenfolge:** Index-Iterationsrichtung, `DocIDs`-Sortierung (`sortDocID`), `bleve.NewQueryStringQuery` — keine unbeabsichtigte Semantikänderung der Query-Sprache/Ergebnisordnung.
+7. **Sicherheits-/Betriebsoberfläche:** Auth-Status der Query-Endpunkte (#52/#78) und pprof/expvar-Exposition (`-diag`) bei Änderungen mitdokumentiert; Verweis auf `docs/PRIVACY.md` aktuell.
 
 ---
-*Erzeugt für Issue #79. Referenzsymbole u. a.: `main`/Flag-Defaults (`cmd/ekanited/main.go`), `NewEngine`/`Open`/`Index`/`Search`/`enforceRetention`/`RetentionCheckInterval` (`engine.go`), `NewBatcher`/`Start`/`C` (`engine.go`), `NewIndex`/`OpenIndex`/`Shard`/`Index.Shard`/`Index.Search`/`DeleteIndex`/`DocIDs.Less` (`index.go`), `Event.ID`/`Data` (`event.go`), `input.Event.ReferenceTime` (`input/event.go`), `NewCollector`/`TCPCollector.handleConnection` (`input/collector.go`), `NewServer`/`NewHTTPServer` (`server*.go`), `query.NewParser` (`query/parser.go`).*
+*Erzeugt für Issue #79. Referenzsymbole u. a.: `main`/Flag-Defaults (`cmd/ekanited/main.go`), `NewEngine`/`Open`/`Index`/`Search`/`enforceRetention`/`RetentionCheckInterval` (`engine.go`), `NewBatcher`/`Start`/`C` (`engine.go`), `NewIndex`/`OpenIndex`/`Shard`/`Index.Shard`/`Index.Search`/`DeleteIndex`/`sortDocID` (`index.go`), `Event.ID`/`Data` (`event.go`), `input.Event.ReferenceTime` (`input/event.go`), `NewCollector`/`TCPCollector.handleConnection` (`input/collector.go`), `input.Parser`/`NewParser` (`input/parser.go`), `NewServer`/`NewHTTPServer` (`server*.go`).*

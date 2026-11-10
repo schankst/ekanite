@@ -42,7 +42,7 @@ var bsdMonths = map[string]time.Month{
 }
 
 // Parse parses a raw RFC 3164 line into named fields. A non-matching line
-// leaves the result untouched (LogHandler then counts/forwards it unparsed).
+// leaves the result untouched (Parser then counts/forwards it unparsed).
 func (p *BSD) Parse(raw []byte, result *map[string]any) {
 	m := p.matcher.FindStringSubmatch(string(raw))
 	if m == nil {

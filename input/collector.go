@@ -61,7 +61,7 @@ func newEvent(text string, parsed map[string]any, source string) *Event {
 // a failed parse still yields an event (raw/unparsed fallback, Issue #16).
 // Shared by the TCP and UDP collectors so parse+construct lives in one place
 // (Issue #5).
-func parsedEvent(parser *LogHandler, line, source string) *Event {
+func parsedEvent(parser *Parser, line, source string) *Event {
 	var parsed map[string]any
 	if parser.Parse([]byte(line)) {
 		parsed = parser.Result

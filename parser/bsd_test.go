@@ -118,7 +118,7 @@ func TestBSD_EmptyMessage(t *testing.T) {
 	}
 }
 
-// #36: Ungültige Zeile -> kein Ergebnis (LogHandler zählt als unparsed).
+// #36: Ungültige Zeile -> kein Ergebnis (Parser zählt als unparsed).
 func TestBSD_Invalid(t *testing.T) {
 	for _, raw := range []string{
 		"",

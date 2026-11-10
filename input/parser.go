@@ -20,8 +20,8 @@ const (
 // StatsCollector records parser/input statistics as key/delta increments.
 type StatsCollector func(key string, delta int64)
 
-// LogParser parses a raw log line into result fields.
-type LogParser interface {
+// FormatParser parses a raw log line of one specific format into result fields.
+type FormatParser interface {
 	Parse(raw []byte, result *map[string]any)
 	Init()
 	// Stats wires the parser's internal counters (e.g. rfc5424Unparsed) into
@@ -29,12 +29,14 @@ type LogParser interface {
 	Stats(callback func(key string, delta int64))
 }
 
-// A Parser parses the raw input as a map with a timestamp field.
-type LogHandler struct {
+// Parser parses raw log lines using a format-specific FormatParser. It holds
+// the last Raw line and Result map so collectors reuse one instance per
+// connection (renamed from LogHandler, Issue #98).
+type Parser struct {
 	Fmt    string
 	Raw    []byte
 	Result map[string]any
-	Parser LogParser
+	Format FormatParser
 	Stats  func(key string, delta int64)
 }
 
@@ -57,31 +59,31 @@ func ValidFormat(f string) bool {
 	return false
 }
 
-// NewParser returns a new Parser instance.
-func NewParser(f string) (*LogHandler, error) {
+// NewParser returns a new Parser instance for the given format.
+func NewParser(f string) (*Parser, error) {
 	if !ValidFormat(f) {
 		return nil, fmt.Errorf("%s is not a valid parser format", f)
 	}
 
-	var p = &LogHandler{}
+	var p = &Parser{}
 
 	if f == RFC5424Name || f == RFC5424Standard {
-		p.Parser = &parser.RFC5424{}
+		p.Format = &parser.RFC5424{}
 		p.Fmt = RFC5424Standard
 	}
 	if f == FortiOSName || f == FortiOSStandard {
-		p.Parser = &parser.FortiOS{}
+		p.Format = &parser.FortiOS{}
 		p.Fmt = FortiOSStandard
 	}
 	if f == BSDName || f == BSDStandard {
-		p.Parser = &parser.BSD{}
+		p.Format = &parser.BSD{}
 		p.Fmt = BSDStandard
 	}
 
 	log.Printf("input format parser created for %s", f)
 	p.Stats = stats.Add
-	p.Parser.Stats(p.Stats) // wire parser-level counters (e.g. rfc5424Unparsed) into expvar "input"
-	p.Parser.Init()
+	p.Format.Stats(p.Stats) // wire parser-level counters (e.g. rfc5424Unparsed) into expvar "input"
+	p.Format.Init()
 	return p, nil
 }
 
@@ -112,10 +114,10 @@ func warnUnparsed() {
 		atomic.StoreInt64(&unparsedCount, 0)
 	}
 }
-func (p *LogHandler) Parse(b []byte) bool {
+func (p *Parser) Parse(b []byte) bool {
 	p.Result = map[string]any{}
 	p.Raw = b
-	p.Parser.Parse(p.Raw, &p.Result)
+	p.Format.Parse(p.Raw, &p.Result)
 	if len(p.Result) == 0 {
 		// The event is not dropped: collectors forward it as an unparsed
 		// raw-line fallback (Issue #16). Count it here so the loss is

@@ -97,8 +97,8 @@ func TestAutoDelimiter_ExplicitLF(t *testing.T) {
 	}
 }
 
-// #35: LogHandler counts unparsed lines and forwards raw-line fallback events.
-func TestLogHandler_UnparsedCounter(t *testing.T) {
+// #35: Parser counts unparsed lines and forwards raw-line fallback events.
+func TestParser_UnparsedCounter(t *testing.T) {
 	p, err := NewParser("syslog")
 	if err != nil {
 		t.Fatal(err)
