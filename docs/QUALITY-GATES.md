@@ -26,6 +26,7 @@ Die Gate-Toolchain wird **gepinnt**, damit ein Upstream-Release nicht unangekün
 - **golangci-lint**: Tool-Version fest im Workflow (`version: v2.15.0`), nicht `latest` → kein Sprung auf ein inkompatibles Major/Schema.
 - **Go**: `go 1.26` + `toolchain go1.26.10` (Issue #129; zuvor #85 mit 1.24). Der Sprung war nötig, weil ein gepinnter govulncheck-Lauf die Stdlib der gepinnten Go-Version scannt und Go 1.24 **27 Stdlib-Advisories** aufwies (Fixes erst in Go 1.25.x/1.26.x).
 - **govulncheck**: feste Version (`golang.org/x/vuln/cmd/govulncheck@v1.9.0`), nicht `@latest` → läuft unter dem gepinnten Go 1.26 und scannt dessen Stdlib; kein Auto-Toolchain-Download.
+- **goreleaser**: feste Tool-Version (`version: v2.20.0` in `release.yml`), nicht `latest` → reproduzierbare Releases (#138).
 
 Beim Anheben einer gepinnten Version: lokal ausführen, Schema-/Verhaltensänderungen prüfen, erst dann den Pin aktualisieren.
 
