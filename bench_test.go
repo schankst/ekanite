@@ -1,6 +1,8 @@
 package ekanite
 
 import (
+	"io"
+	"log"
 	"strconv"
 	"testing"
 	"time"
@@ -8,8 +10,9 @@ import (
 	"github.com/schankst/ekanite/input"
 )
 
-// benchLine is a representative RFC 5424 line for the indexing benchmarks.
-const benchLine = `<165>1 2024-01-01T00:00:00Z host1 app1 123 ID47 - an application event log entry`
+// benchLine is a representative RFC 5424 line (with structured data) for the
+// indexing benchmarks.
+const benchLine = `<165>1 2024-01-01T00:00:00Z host1 app1 123 ID47 [exampleSDID@32473 iut="3" eventSource="Application"] an application event log entry`
 
 const (
 	// benchEvents is the number of events indexed per operation; it matches the
@@ -22,14 +25,33 @@ const (
 )
 
 // makeBenchEvents builds n distinct indexable events sharing one reference time
-// so they land in a single index (the realistic steady-state shape). Distinct
-// Sequence values keep the derived DocIDs unique.
-func makeBenchEvents(n int) []*Event {
+// so they land in a single index. The parsed fields come from the real parser,
+// so the document shape — and therefore the index size — matches production
+// instead of benchmarking a Message-only event (see docs/CAPACITY.md).
+func makeBenchEvents(b testing.TB, n int) []*Event {
+	b.Helper()
+	prev := log.Writer()
+	log.SetOutput(io.Discard)
+	p, err := input.NewParser("syslog")
+	log.SetOutput(prev)
+	if err != nil {
+		b.Fatalf("NewParser: %v", err)
+	}
+
 	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	evs := make([]*Event, n)
 	for i := range evs {
+		line := benchLine + " #" + strconv.Itoa(i)
+		var parsed map[string]any
+		if p.Parse([]byte(line)) {
+			parsed = make(map[string]any, len(p.Result))
+			for k, v := range p.Result {
+				parsed[k] = v
+			}
+		}
 		evs[i] = &Event{Event: &input.Event{
-			Text:          benchLine + " #" + strconv.Itoa(i),
+			Text:          line,
+			Parsed:        parsed,
 			ReceptionTime: base,
 			Sequence:      int64(i),
 		}}
@@ -48,7 +70,7 @@ func BenchmarkBatchIndexing(b *testing.B) {
 	}
 	defer eng.Close()
 
-	events := makeBenchEvents(benchEvents)
+	events := makeBenchEvents(b, benchEvents)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for off := 0; off < len(events); off += benchBatchSize {
