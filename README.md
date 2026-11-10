@@ -1,4 +1,4 @@
-# Ekanite [![Go](https://img.shields.io/badge/Go-1.24-blue?logo=go)](https://go.dev/) [![Issues](https://img.shields.io/github/issues/schankst/ekanite)](https://github.com/schankst/ekanite/issues) [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+# Ekanite [![Go](https://img.shields.io/badge/Go-1.26-blue?logo=go)](https://go.dev/) [![Issues](https://img.shields.io/github/issues/schankst/ekanite)](https://github.com/schankst/ekanite/issues) [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > **⚠️ WORK IN PROGRESS — nicht produktionsreif.** Dieser Fork wird aktiv refactored (Stand/Plan: [`docs/LAGEBILD.md`](docs/LAGEBILD.md), [`docs/ROADMAP.md`](docs/ROADMAP.md)). Kritische Sicherheitslücken sind offen: unauthentifizierte Query-Ports, exponiertes pprof, TCP-DoS-Vektoren, stille Datenverluste (Issues #14, #52, #78, #67). **Nicht für den Produktiveinsatz verwenden.**
 
@@ -17,7 +17,7 @@
 ## Schnellstart
 
 ```bash
-go build ./...                       # Go 1.24+
+go build ./...                       # Go 1.26+
 ./ekanited -datadir ~/ekanite_data   # oder ein anderes Verzeichnis
 ekanited -h                          # alle Optionen
 ```

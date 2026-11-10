@@ -122,7 +122,7 @@ graph TD
 | Gate | Kriterium |
 |---|---|
 | G0 (nach W0) | `gofmt -l` leer; README/Flag-Texte synchron; #44/#72 fix; keine Work-in-progress-Doku-Reste |
-| G1 (nach W1) | `-race` grün; `govulncheck` = 0; Go 1.24; keine archivierten Module; SBOM/Checksums im Release-Pfad |
+| G1 (nach W1) | `-race` grün; `govulncheck` = 0; Go 1.26; keine archivierten Module; SBOM/Checksums im Release-Pfad |
 | G2 (nach W2) | E1–E4 abgeschlossen: keine Panik-/Leck-Pfade, Parser-Grammatik gemäß #16/#17, Tests ≥ 85 % Kernpakete |
 | G3 (nach W3) | #88/#89 geschlossen; API-Vertrag (#41) eingehalten; OPS-1..6/GAP-1..8 abgearbeitet; README-Banner „WIP“ entfernt nach finaler Verifikation |
 

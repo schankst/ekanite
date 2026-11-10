@@ -2,7 +2,7 @@
 # Multi-stage build for ekanited (amd64-focused; adjust --platform for other targets).
 # Version metadata is embedded via -ldflags (Issue #43), consistent with local builds.
 
-FROM golang:1.24-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 
 # Cache module metadata; go.mod is present in this repo (not modified by this artifact).
