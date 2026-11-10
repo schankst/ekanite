@@ -47,10 +47,10 @@ jobs:
             COMMIT=${GITHUB_SHA::12}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: "latest"
+          version: "v2.20.0" # pinned (Issue #142 pinning policy; reproducible releases)
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
