@@ -11,45 +11,39 @@ import (
 	"time"
 )
 
-// HTTPServer serves query client connections.
+// HTTPServer serves query client connections over HTTP.
 type HTTPServer struct {
-	iface    string
-	Searcher Searcher
+	serverBase
 
-	addr     net.Addr
-	ln       net.Listener
 	template *template.Template
-
-	Logger *log.Logger
 }
 
 // NewHTTPServer returns a new Server instance.
 func NewHTTPServer(iface string, searcher Searcher) *HTTPServer {
 	return &HTTPServer{
-		iface:    iface,
-		Searcher: searcher,
-		Logger:   log.New(os.Stderr, "[httpserver] ", log.LstdFlags),
+		serverBase: serverBase{
+			iface:    iface,
+			Searcher: searcher,
+			Logger:   log.New(os.Stderr, "[httpserver] ", log.LstdFlags),
+		},
 	}
 }
 
-// Start instructs the Server to bind to the interface and accept connections.
+// Start instructs the Server to bind to the interface and serve HTTP.
 func (s *HTTPServer) Start() error {
-	ln, err := net.Listen("tcp", s.iface)
-	if err != nil {
+	if err := s.listen(); err != nil {
 		return err
 	}
 
-	s.ln = ln
-	s.addr = ln.Addr()
-
-	s.template, err = template.New("ServerTemplate").Parse(templateSource)
+	tmpl, err := template.New("ServerTemplate").Parse(templateSource)
 	if err != nil {
-		ln.Close()
+		s.ln.Close()
 		return err
 	}
+	s.template = tmpl
 
 	go func() {
-		if err := http.Serve(ln, s); err != nil {
+		if err := http.Serve(s.ln, s); err != nil {
 			// ErrServerClosed and net.ErrClosed are the normal return after
 			// Close() on shutdown (Issue #49), not failures worth logging.
 			if !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
@@ -63,15 +57,7 @@ func (s *HTTPServer) Start() error {
 // Close stops the HTTP server: the listener is closed, http.Serve returns.
 // Active requests are not forcibly cut, but no new ones are accepted (Issue #49).
 func (s *HTTPServer) Close() error {
-	if s.ln != nil {
-		return s.ln.Close()
-	}
-	return nil
-}
-
-// Addr returns the address to which the Server is bound.
-func (s *HTTPServer) Addr() net.Addr {
-	return s.addr
+	return s.closeListener()
 }
 
 // ServeHTTP implements a http.Handler, serving the query interface for Ekanite
@@ -118,8 +104,8 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		for s := range resultSet {
-			resultSlice = append(resultSlice, s)
+		for res := range resultSet {
+			resultSlice = append(resultSlice, res)
 		}
 
 		data := struct {
