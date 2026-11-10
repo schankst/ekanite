@@ -11,25 +11,15 @@ import (
 	"github.com/schankst/ekanite/status"
 )
 
-func startTCPCollector(iface, format, framing string, tls *tls.Config, batcher *ekanite.Batcher) (input.Collector, error) {
-	collector, err := input.NewCollector("tcp", iface, format, framing, tls)
+// startCollector creates and starts a network collector. proto is "tcp" or
+// "udp"; tls/framing are ignored by the UDP collector.
+func startCollector(proto, iface, format, framing string, tls *tls.Config, batcher *ekanite.Batcher) (input.Collector, error) {
+	collector, err := input.NewCollector(proto, iface, format, framing, tls)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create TCP collector: %w", err)
+		return nil, fmt.Errorf("failed to create %s collector: %w", proto, err)
 	}
 	if err := collector.Start(batcher.C()); err != nil {
-		return nil, fmt.Errorf("failed to start TCP collector: %w", err)
-	}
-
-	return collector, nil
-}
-
-func startUDPCollector(iface, format string, batcher *ekanite.Batcher) (input.Collector, error) {
-	collector, err := input.NewCollector("udp", iface, format, "", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create UDP collector: %w", err)
-	}
-	if err := collector.Start(batcher.C()); err != nil {
-		return nil, fmt.Errorf("failed to start UDP collector: %w", err)
+		return nil, fmt.Errorf("failed to start %s collector: %w", proto, err)
 	}
 
 	return collector, nil
