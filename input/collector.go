@@ -23,6 +23,10 @@ func init() {
 
 const (
 	newlineTimeout = time.Duration(1000 * time.Millisecond)
+	// maxTCPConns caps the number of concurrent TCP connections so a flood of
+	// half-open/idle connections cannot exhaust goroutines and file descriptors
+	// (Issue #14). Connections beyond the cap are rejected immediately.
+	maxTCPConns = 1000
 	// msgBufSize is the UDP read buffer. RFC 5426 mandates supporting at least
 	// 2048 octets; 4096 covers typical datagrams without silently truncating
 	// larger legitimate payloads. Datagrams that still exceed it are counted in
@@ -82,6 +86,17 @@ type TCPCollector struct {
 	addr      net.Addr
 	ln        net.Listener
 	tlsConfig *tls.Config
+
+	// readTimeout is the per-byte read deadline; an idle connection is closed
+	// once it elapses instead of looping forever (Issue #14). Defaults to
+	// newlineTimeout when zero.
+	readTimeout time.Duration
+	// maxConns caps concurrent connections; excess connections are rejected
+	// (Issue #14). Defaults to maxTCPConns when zero.
+	maxConns int
+
+	// sem bounds concurrent connections (size maxConns); created in Start.
+	sem chan struct{}
 }
 
 // UDPCollector represents a network collector that accepts UDP packets.
@@ -105,10 +120,12 @@ func NewCollector(proto, iface, format, framing string, tlsConfig *tls.Config) (
 
 	if strings.ToLower(proto) == "tcp" {
 		return &TCPCollector{
-			iface:     iface,
-			format:    format,
-			framing:   framing,
-			tlsConfig: tlsConfig,
+			iface:       iface,
+			format:      format,
+			framing:     framing,
+			tlsConfig:   tlsConfig,
+			readTimeout: newlineTimeout,
+			maxConns:    maxTCPConns,
 		}, nil
 	} else if strings.ToLower(proto) == "udp" {
 		addr, err := net.ResolveUDPAddr("udp", iface)
@@ -136,6 +153,12 @@ func (s *TCPCollector) Start(c chan<- *Event) error {
 	s.ln = ln
 	s.addr = ln.Addr()
 
+	limit := s.maxConns
+	if limit <= 0 {
+		limit = maxTCPConns
+	}
+	s.sem = make(chan struct{}, limit)
+
 	go func() {
 		for {
 			conn, err := ln.Accept()
@@ -146,7 +169,18 @@ func (s *TCPCollector) Start(c chan<- *Event) error {
 				}
 				continue
 			}
-			go s.handleConnection(conn, c)
+			// Bound concurrent connections (Issue #14): reject beyond the cap
+			// so a flood of half-open connections cannot exhaust resources.
+			select {
+			case s.sem <- struct{}{}:
+				go func() {
+					defer func() { <-s.sem }()
+					s.handleConnection(conn, c)
+				}()
+			default:
+				stats.Add("tcpConnsRejected", 1)
+				conn.Close()
+			}
 		}
 	}()
 	return nil
@@ -194,11 +228,13 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 
 	delimiter := newFrameDelimiter(s.framing, msgBufSize)
 	reader := bufio.NewReader(conn)
-	var log string
-	var match bool
+	readTimeout := s.readTimeout
+	if readTimeout <= 0 {
+		readTimeout = newlineTimeout
+	}
 
 	for {
-		if err := conn.SetReadDeadline(time.Now().Add(newlineTimeout)); err != nil {
+		if err := conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
 			stats.Add("tcpConnUnrecoverError", 1)
 			return
 		}
@@ -206,29 +242,28 @@ func (s *TCPCollector) handleConnection(conn net.Conn, c chan<- *Event) {
 		if err != nil {
 			stats.Add("tcpConnReadError", 1)
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
+				// Idle sender: the deadline ends the connection instead of
+				// re-arming forever (Issue #14).
 				stats.Add("tcpConnReadTimeout", 1)
-			} else if err == io.EOF {
+			} else if errors.Is(err, io.EOF) {
 				stats.Add("tcpConnReadEOF", 1)
 			} else {
 				stats.Add("tcpConnUnrecoverError", 1)
 				return
 			}
 
-			log, match = delimiter.flushRemainder()
-		} else {
-			stats.Add("tcpBytesRead", 1)
-			log, match = delimiter.Push(b)
+			// Flush any buffered complete line, then close the connection.
+			if log, match := delimiter.flushRemainder(); match {
+				stats.Add("tcpEventsRx", 1)
+				c <- parsedEvent(parser, log, conn.RemoteAddr().String())
+			}
+			return
 		}
 
-		// Log line available?
-		if match {
+		stats.Add("tcpBytesRead", 1)
+		if log, match := delimiter.Push(b); match {
 			stats.Add("tcpEventsRx", 1)
 			c <- parsedEvent(parser, log, conn.RemoteAddr().String())
-		}
-
-		// Was the connection closed?
-		if err == io.EOF {
-			return
 		}
 	}
 }
