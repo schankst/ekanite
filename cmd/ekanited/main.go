@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -100,12 +99,7 @@ func main() {
 		engine.NumShards, engine.RetentionPeriod, engine.IndexDuration)
 
 	// Start the query servers if requested.
-	if cfg.QueryIface != "" {
-		components.query = startQueryServer(cfg.QueryIface, engine)
-	}
-	if cfg.QueryHTTPIface != "" {
-		components.queryHTTP = startHTTPQueryServer(cfg.QueryHTTPIface, engine)
-	}
+	startQueryServers(cfg, engine, &components)
 
 	// Create and start the batcher.
 	batcher := ekanite.NewBatcher(engine, cfg.BatchSize, cfg.BatchTimeout, cfg.IndexMaxPending)
@@ -120,34 +114,10 @@ func main() {
 	// Start draining batcher errors.
 	go drainLog("error indexing batch", errChan)
 
-	// Start TCP collector if requested.
-	var certReload *certReloader
-	if cfg.TCPIface != "" {
-		var tlsConfig *tls.Config
-		if cfg.TLSCert != "" && cfg.TLSKey != "" {
-			tlsConfig, certReload, err = newTLSConfig(cfg.TLSCert, cfg.TLSKey)
-			if err != nil {
-				log.Fatalf("failed to configure TLS: %s", err.Error())
-			}
-			log.Printf("TLS successfully configured (cert reload on SIGHUP)")
-		}
-
-		if tcpCol, err := startCollector("tcp", cfg.TCPIface, cfg.InputFormat, cfg.Framing, tlsConfig, batcher); err != nil {
-			log.Fatalf("failed to start TCP collector: %s", err.Error())
-		} else {
-			components.collectors = append(components.collectors, tcpCol)
-		}
-		log.Printf("TCP collector listening to %s", cfg.TCPIface)
-	}
-
-	// Start UDP collector if requested.
-	if cfg.UDPIface != "" {
-		if udpCol, err := startCollector("udp", cfg.UDPIface, cfg.InputFormat, "", nil, batcher); err != nil {
-			log.Fatalf("failed to start UDP collector: %s", err.Error())
-		} else {
-			components.collectors = append(components.collectors, udpCol)
-		}
-		log.Printf("UDP collector listening to %s", cfg.UDPIface)
+	// Start the ingest collectors (TCP with optional TLS, UDP) if requested.
+	certReload, err := startIngestCollectors(cfg, batcher, &components)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Start profiling.

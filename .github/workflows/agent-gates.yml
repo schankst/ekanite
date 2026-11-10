@@ -140,3 +140,16 @@ jobs:
             /tmp/sbom.txt
             /tmp/checksums.txt
           if-no-files-found: error
+
+  complexity:
+    name: Komplexität (gocyclo, informativ)
+    needs: baseline
+    continue-on-error: true # informativ/nicht blockierend (Issue #87)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - name: gocyclo (Top-10 + Durchschnitt, informativ)
+        run: go run github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0 -top 10 -avg .

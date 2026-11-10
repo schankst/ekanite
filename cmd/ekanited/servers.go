@@ -25,6 +25,53 @@ func startCollector(proto, iface, format, framing string, tls *tls.Config, batch
 	return collector, nil
 }
 
+// startQueryServers starts the telnet and/or HTTP query servers per config.
+func startQueryServers(cfg *Config, engine *ekanite.Engine, comp *closers) {
+	if cfg.QueryIface != "" {
+		comp.query = startQueryServer(cfg.QueryIface, engine)
+	}
+	if cfg.QueryHTTPIface != "" {
+		comp.queryHTTP = startHTTPQueryServer(cfg.QueryHTTPIface, engine)
+	}
+}
+
+// startIngestCollectors starts the TCP (with optional TLS) and UDP collectors
+// per config. It returns the TLS certificate reloader (nil when TLS is off) so
+// the signal handler can reload certificates on SIGHUP (Issue #74).
+func startIngestCollectors(cfg *Config, batcher *ekanite.Batcher, comp *closers) (*certReloader, error) {
+	var certReload *certReloader
+
+	if cfg.TCPIface != "" {
+		var tlsConfig *tls.Config
+		if cfg.TLSCert != "" && cfg.TLSKey != "" {
+			var err error
+			tlsConfig, certReload, err = newTLSConfig(cfg.TLSCert, cfg.TLSKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to configure TLS: %w", err)
+			}
+			log.Printf("TLS successfully configured (cert reload on SIGHUP)")
+		}
+
+		tcpCol, err := startCollector("tcp", cfg.TCPIface, cfg.InputFormat, cfg.Framing, tlsConfig, batcher)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start TCP collector: %w", err)
+		}
+		comp.collectors = append(comp.collectors, tcpCol)
+		log.Printf("TCP collector listening to %s", cfg.TCPIface)
+	}
+
+	if cfg.UDPIface != "" {
+		udpCol, err := startCollector("udp", cfg.UDPIface, cfg.InputFormat, "", nil, batcher)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start UDP collector: %w", err)
+		}
+		comp.collectors = append(comp.collectors, udpCol)
+		log.Printf("UDP collector listening to %s", cfg.UDPIface)
+	}
+
+	return certReload, nil
+}
+
 func startQueryServer(iface string, engine *ekanite.Engine) *ekanite.Server {
 	server := ekanite.NewServer(iface, engine)
 	if server == nil {

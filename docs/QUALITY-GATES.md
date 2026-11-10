@@ -47,6 +47,12 @@ Kein Gate ist aktuell ausgenommen; govulncheck blockiert seit #82. Bekannte, nic
 - Das Coverage-Profil wird als **CI-Artifact** (`coverage.out`) pro PR hochgeladen — der `-cover`-Diff ist damit im PR sichtbar.
 - Neue Pakete starten mit **≥ 50 %** Abdeckung (Tests ab #22–#25, Ziel ≥ 85 % Kern in #89).
 
+## Komplexitäts-Report (informativ)
+
+- Der CI-Job **`Komplexität (gocyclo, informativ)`** gibt bei jedem Lauf die **Top-10-Funktionen nach zyklomatischer Komplexität** (und den Durchschnitt) aus — **nicht blockierend** (`continue-on-error: true`, Issue #87).
+- Ziel: Sichtbarkeit statt Gate. Top-Funktionen sind entweder **vereinfacht** (z. B. `assert` entfernt #84, `DocIDs.Less`→`sortDocID` #86, Collector-Kaskaden #14, `main` entflochten #11/#87) **oder mit Tests belegt** (Query-Server `handleConnection`/`ServeHTTP` getestet, #87).
+- Beim Hinzufügen hochkomplexer Funktionen: prüfen, ob sie aufteilbar sind; sonst mit Tests absichern.
+
 ## Performance-Gate (nach MS2)
 
 - **Geplant** (Block, abhängig von #77 Benchmark-Suite): Benchmark-Smoke für Ingest, keine Regressions-Ergebnisse > 10 %.
