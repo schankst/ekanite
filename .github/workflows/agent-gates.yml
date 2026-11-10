@@ -153,3 +153,24 @@ jobs:
           go-version: "1.26"
       - name: gocyclo (Top-10 + Durchschnitt, informativ)
         run: go run github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0 -top 10 -avg .
+
+  benchmarks:
+    name: Benchmark (informativ)
+    needs: baseline
+    continue-on-error: true # informativ/nicht blockierend (Issue #77)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - name: Run benchmarks (bounded)
+        run: |
+          go test -run '^$' -bench . -benchmem -benchtime=1x -timeout 10m ./... | tee /tmp/bench.txt
+          grep 'ns/op' /tmp/bench.txt
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmarks
+          path: /tmp/bench.txt
+          if-no-files-found: error

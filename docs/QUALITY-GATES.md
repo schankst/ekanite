@@ -53,10 +53,11 @@ Kein Gate ist aktuell ausgenommen; govulncheck blockiert seit #82. Bekannte, nic
 - Ziel: Sichtbarkeit statt Gate. Top-Funktionen sind entweder **vereinfacht** (z. B. `assert` entfernt #84, `DocIDs.Less`→`sortDocID` #86, Collector-Kaskaden #14, `main` entflochten #11/#87) **oder mit Tests belegt** (Query-Server `handleConnection`/`ServeHTTP` getestet, #87).
 - Beim Hinzufügen hochkomplexer Funktionen: prüfen, ob sie aufteilbar sind; sonst mit Tests absichern.
 
-## Performance-Gate (nach MS2)
+## Performance-Gate (nach MS2, #77)
 
-- **Geplant** (Block, abhängig von #77 Benchmark-Suite): Benchmark-Smoke für Ingest, keine Regressions-Ergebnisse > 10 %.
-- Solange #77 offen ist, gibt es kein Performance-Gate; Performance-Änderungen werden über die Test-Suite + manuelle Smoke-Messung abgesichert.
+- **Benchmark-Suite:** `bench_test.go` (Engine/Batch-Indexierung) und `input/bench_test.go` (Framing/Parser). CI-Job **`Benchmark (informativ)`** — gebunden (`-benchtime=1x`), Artefakt `benchmarks`, **nicht blockierend** (`continue-on-error: true`).
+- **Richtwerte:** `docs/CAPACITY.md` (Events/s, Disk/Event, RAM, Annahmen).
+- **Regressionsregel:** ein Ergebnis **> 10 %** schlechter als die Referenz ist ein Review-Blocker (#39). Der belastbare Vergleich erfolgt per `benchstat` (Rezept in `docs/CAPACITY.md`); ein automatisch blockierendes Zeit-Gate ist auf geteilten CI-Runnern zu verrauscht und daher bewusst nicht aktiviert.
 
 ## Verantwortung
 
