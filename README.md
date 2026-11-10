@@ -104,6 +104,7 @@ Jede Option ist CLI-Flag oder Umgebungsvariable `EKANITE_<FLAGNAME>` (Flag-Name 
 | [docs/RELEASING.md](docs/RELEASING.md) | Release-Pipeline (GoReleaser, GHCR, SBOM) |
 | [docs/QUALITY-GATES.md](docs/QUALITY-GATES.md) | CI-Gates-Vertrag |
 | [docs/CAPACITY.md](docs/CAPACITY.md) | Benchmark-Richtwerte & Dimensionierung |
+| [docs/SEARCH-STACK.md](docs/SEARCH-STACK.md) | Such-Stack-Vertrag (Zielzustand SQLite + FTS5) |
 | [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/LAGEBILD.md](docs/LAGEBILD.md) | Planung · aktueller Stand |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Beitrags- und Build-Hinweise |
 
